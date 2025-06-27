@@ -1,0 +1,22 @@
+{
+  "name": "jockey",
+  "version": "1.0.0",
+  "description": "A boilerplate TypeScript NPM program.",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/main.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "puppeteer": "^21.3.8",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@google-cloud/text-to-speech": "^6.1.0",
+    "play-sound": "^1.1.6",
+    "util": "^0.12.5"
+  }
+}
