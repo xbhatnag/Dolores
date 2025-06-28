@@ -7,6 +7,7 @@ import Parser from 'rss-parser';
 import { decodeHTML } from 'entities';
 import { readFile, rm } from "node:fs/promises";
 import { GenerativeModel, VertexAI } from '@google-cloud/vertexai';
+import { randomInt } from "node:crypto";
 
 const execPromise = util.promisify(exec);
 
@@ -35,12 +36,18 @@ class Article {
     url!: string;
 }
 
+class ScriptPiece {
+    text!: string;
+    audio_file!: string;
+}
+
 class Script {
+    // The article that this script is based on
     article!: Article;
-    formal_text!: string;
-    informal_text!: string;
-    formal_audio_file!: string;
-    informal_audio_file!: string;
+
+    intro?: ScriptPiece;
+    formal!: ScriptPiece;
+    informal?: ScriptPiece;
 }
 
 async function playAndDeleteAudio(audio_file: string): Promise<void> {
@@ -55,14 +62,28 @@ async function playScript(script: Script): Promise<void> {
     console.log(`🌐 ${script.article.url}`)
 
     console.log('-----------------------------------');
-    console.log(script.formal_text);
-    console.log('');
-    console.log(script.informal_text);
+    if (script.intro) {
+        console.log(script.intro.text);
+        console.log('');
+    }
+    console.log(script.formal.text);
+    if (script.informal) {
+        console.log('');
+        console.log(script.informal.text);
+    }
 
-    await playAndDeleteAudio(script.formal_audio_file);
-    await delay(700); // Wait for 700ms before playing informal part
+    if (script.intro) {
+        await playAndDeleteAudio(script.intro.audio_file);
+        await delay(500); // Wait for 500ms before playing formal part
+    }
 
-    await playAndDeleteAudio(script.informal_audio_file);
+    await playAndDeleteAudio(script.formal.audio_file);
+
+    if (script.informal) {
+        await delay(700); // Wait for 700ms before playing informal part
+        await playAndDeleteAudio(script.informal.audio_file);
+    }
+    
     await delay(1000); // Wait for 1 second before playing the next script
 }
 
@@ -138,6 +159,10 @@ async function readArsTechnica(): Promise<Article[]> {
     });
 }
 
+function flipCoin(odds: number = 0.5): boolean {
+    return Math.random() < odds;
+}
+
 async function createScript(
     tts: TextToSpeechClient,
     speechWriter: GenerativeModel,
@@ -163,14 +188,35 @@ async function createScript(
     const text = result.response.candidates![0].content.parts[0].text!;
 
     const parts = text.split('...\n');
-    script.formal_text = parts[0].trim();
-    script.informal_text = parts[1].trim(); 
 
+    if (parts.length < 3) {
+        throw new Error('Script generation did not return enough parts');
+    }
+
+    if (parts.length > 3) {
+        console.warn(`Script generation returned more than 3 parts: ${parts.length}. Only using the first 3.`);
+    }
+
+    if (flipCoin()) {
+        // 50-50 odds of including an intro
+        script.intro = new ScriptPiece();
+        script.intro.text = parts[0].trim();
+        const intro_file_name = `${filename}_intro`;
+        script.intro.audio_file = await getAudio(tts, script.intro.text, intro_file_name);
+    }
+
+    script.formal = new ScriptPiece();
+    script.formal.text = parts[1].trim();
     const formal_file_name = `${filename}_formal`;
-    const informal_file_name = `${filename}_informal`;
+    script.formal.audio_file = await getAudio(tts, script.formal.text, formal_file_name);
 
-    script.formal_audio_file = await getAudio(tts, script.formal_text, formal_file_name);
-    script.informal_audio_file = await getAudio(tts, script.informal_text, informal_file_name);
+    if (flipCoin(0.5)) {
+        // 50-50 odds of including an opinion piece
+        script.informal = new ScriptPiece();
+        script.informal.text = parts[2].trim(); 
+        const informal_file_name = `${filename}_informal`;
+        script.informal.audio_file = await getAudio(tts, script.informal.text, informal_file_name);
+    }
 
     return script;
 }
@@ -189,7 +235,7 @@ function delay(ms: number) {
  * @param {T[]} arr2 The second array.
  * @returns {T[]} A new array with elements interleaved from arr1 and arr2.
  */
-function interleaveArrays<T>(arr1: T[], arr2: T[]): T[] {
+function randomInterleaveArrays<T>(arr1: T[], arr2: T[]): T[] {
   const result: T[] = [];
   let i = 0; // Pointer for arr1
   let j = 0; // Pointer for arr2
@@ -246,7 +292,7 @@ async function main(): Promise<void> {
     const ars_technica = await readArsTechnica();
     ars_technica.reverse(); // Reverse the order to get the oldest articles first
 
-    const articles = interleaveArrays(the_verge, ars_technica);
+    const articles = randomInterleaveArrays(the_verge, ars_technica);
 
     const script_promises: Promise<Script>[] = [];
     
