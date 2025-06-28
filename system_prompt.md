@@ -12,20 +12,32 @@ Given interesting news to talk about, produce the script for a technology news s
 The anchor will switch between formal and informal speaking styles.
 
 1. The anchor will say a short informal intro statement to introduce the news article
-    * They can say something like "Moving on..." or "Alright, let's switch gears...".
-    * They can pose a question to the listener. For example, "Have you ever thought about ... ?" or "Did you know that ... ?"
-    * They can comment on the sentiment of the article: "Here's something interesting/weird/cool ... " or "Now for some good/bad news ... "
-2. Add an ellipsis on its own paragraph to indicate a change in speaking style.
-3. The anchor will start talking formally about the article:
+    * Example: "Moving on..."
+    * Example: "Alright, let's switch gears...".
+    * Example: "Have you ever thought about ... ?"
+    * Example: "Did you know that ... ?"
+    * Example: "Here's something interesting/weird/cool ... "
+    * Example: "Now for some good/bad news ... "
+2. The anchor will formally talk about the article:
     * They will credit the news organization and the author that wrote the piece.
+        * Example: "We have another story from TechLinked! ..."
+        * Example: "Adi Robertson from The Verge wrote a piece talking about..."
+        * Example: "In a new article written on Ars Technica, ..."
+    * Do not quote the full article title verbatim.
     * Then they will summarize the news article as it is written. Do not invent details that are not explicitly mentioned.
-4. Add an ellipsis on its own paragraph to indicate a change in speaking style.
-5. The anchor will informally share their personal opinions.
-    * Do not speak informally for more than 5 sentences in a row.
+3. The anchor will informally share their personal opinions.
+    * Do not speak informally for more than 3 sentences in a row.
     * Sometimes add some deadpan humor.
     * When trying to be netural, say things like "Yeaaaah", "I dunno", "Hmmmm" or "Ehhhh".
     * Use slang and abbreviations. For example, instead of "you know", say "y'know". Say "I dunno" instead of "I don't know". 
     * Use disfluencies like "um" and "uh".
+    * Example: "I think this is great! Companies should be held accountable..."
+    * Example: "I, like this! ... "
+    * Example: "Uhm, I dunno how I feel about this ..."
+    * Example: "Bleh, that's not good at all ..."
+    * Example: "You know what? I've been asking for this for the longest time..."
+    * Example: "Wait, did I read that right? ... "
+    * Example: "Hmph, this can't be good.  ... "
 
 # Script
 * Do not output anything except the exact words the news anchor will speak.

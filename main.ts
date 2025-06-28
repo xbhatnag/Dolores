@@ -6,7 +6,7 @@ import util from 'node:util'
 import Parser from 'rss-parser';
 import { decodeHTML } from 'entities';
 import { readFile, rm } from "node:fs/promises";
-import { GenerativeModel, VertexAI } from '@google-cloud/vertexai';
+import { GenerativeModel, SchemaType, VertexAI } from '@google-cloud/vertexai';
 import { randomInt } from "node:crypto";
 
 const execPromise = util.promisify(exec);
@@ -34,6 +34,13 @@ class Article {
     author!: string;
     content!: string;
     url!: string;
+
+    // Print the article information
+    print() {
+        console.log(`📰 ${this.title}`);
+        console.log(`✍️ ${this.author} @ ${this.source}`);
+        console.log(`🌐 ${this.url}`)
+    }
 }
 
 class ScriptPiece {
@@ -56,12 +63,7 @@ async function playAndDeleteAudio(audio_file: string): Promise<void> {
 }
 
 async function playScript(script: Script): Promise<void> {
-    console.log('-----------------------------------');
-    console.log(`📰 ${script.article.title}`);
-    console.log(`✍️ ${script.article.author} @ ${script.article.source}`);
-    console.log(`🌐 ${script.article.url}`)
-
-    console.log('-----------------------------------');
+    // Print the script text
     if (script.intro) {
         console.log(script.intro.text);
         console.log('');
@@ -72,6 +74,7 @@ async function playScript(script: Script): Promise<void> {
         console.log(script.informal.text);
     }
 
+    // Play the audio files in order
     if (script.intro) {
         await playAndDeleteAudio(script.intro.audio_file);
         await delay(500); // Wait for 500ms before playing formal part
@@ -110,7 +113,7 @@ async function getAudio(tts: TextToSpeechClient, text: string, filename: string)
     return path;
 }
 
-async function readTheVerge(): Promise<Article[]> {
+async function readTheVergeLongForm(): Promise<Article[]> {
     const parser = new Parser({
         customFields: {
             item: ['summary', 'author'],
@@ -128,6 +131,25 @@ async function readTheVerge(): Promise<Article[]> {
             summary += '[…]'; // Add ellipsis to indicate truncation
         }
         article.content = summary;
+        article.url = item.link!;
+        
+        return article;
+    });
+}
+
+async function readTheVergeQuickPosts(): Promise<Article[]> {
+    const parser = new Parser({
+        customFields: {
+            item: ['summary', 'author'],
+        },
+    });
+    const feed = await parser.parseURL('https://www.theverge.com/rss/quickposts');
+    return feed.items.map(item => {
+        const article = new Article();
+        article.source = 'The Verge';
+        article.title = item.title!;
+        article.author = item.author!;
+        article.content = item.summary!;
         article.url = item.link!;
         
         return article;
@@ -186,34 +208,25 @@ async function createScript(
     });
 
     const text = result.response.candidates![0].content.parts[0].text!;
-
-    const parts = text.split('...\n');
-
-    if (parts.length < 3) {
-        throw new Error('Script generation did not return enough parts');
-    }
-
-    if (parts.length > 3) {
-        console.warn(`Script generation returned more than 3 parts: ${parts.length}. Only using the first 3.`);
-    }
+    const object = JSON.parse(text); // Validate the JSON structure
 
     if (flipCoin()) {
         // 50-50 odds of including an intro
         script.intro = new ScriptPiece();
-        script.intro.text = parts[0].trim();
+        script.intro.text = object.intro.trim();
         const intro_file_name = `${filename}_intro`;
         script.intro.audio_file = await getAudio(tts, script.intro.text, intro_file_name);
     }
 
     script.formal = new ScriptPiece();
-    script.formal.text = parts[1].trim();
+    script.formal.text = object.formal.trim();
     const formal_file_name = `${filename}_formal`;
     script.formal.audio_file = await getAudio(tts, script.formal.text, formal_file_name);
 
     if (flipCoin(0.5)) {
         // 50-50 odds of including an opinion piece
         script.informal = new ScriptPiece();
-        script.informal.text = parts[2].trim(); 
+        script.informal.text = object.informal.trim(); 
         const informal_file_name = `${filename}_informal`;
         script.informal.audio_file = await getAudio(tts, script.informal.text, informal_file_name);
     }
@@ -226,73 +239,103 @@ function delay(ms: number) {
 }
 
 /**
- * Interleaves two arrays with some randomness, taking elements alternately
- * or randomly from each. If one array is longer than the other, the remaining
- * elements of the longer array are appended to the result.
+ * Interleaves an arbitrary number of arrays (N arrays) with randomness.
+ * Elements are picked randomly from any non-empty array until all arrays are exhausted.
  *
  * @template T The type of elements in the arrays.
- * @param {T[]} arr1 The first array.
- * @param {T[]} arr2 The second array.
- * @returns {T[]} A new array with elements interleaved from arr1 and arr2.
+ * @param {...T[][]} arrays An arbitrary number of arrays to interleave.
+ * @returns {T[]} A new array with elements interleaved from all input arrays.
  */
-function randomInterleaveArrays<T>(arr1: T[], arr2: T[]): T[] {
+function interleaveArrays<T>(...arrays: T[][]): T[] {
   const result: T[] = [];
-  let i = 0; // Pointer for arr1
-  let j = 0; // Pointer for arr2
+  // An array to keep track of the current index for each input array
+  const pointers = new Array(arrays.length).fill(0);
 
-  while (i < arr1.length || j < arr2.length) {
-    const hasMoreArr1 = i < arr1.length;
-    const hasMoreArr2 = j < arr2.length;
+  // Loop as long as there's at least one array with remaining elements
+  while (true) {
+    const availableIndices: number[] = [];
 
-    // If both arrays have elements, randomly decide which one to pick from
-    if (hasMoreArr1 && hasMoreArr2) {
-      if (Math.random() < 0.5) { // 50% chance to pick from arr1
-        result.push(arr1[i]);
-        i++;
-      } else { // 50% chance to pick from arr2
-        result.push(arr2[j]);
-        j++;
+    // Find which arrays still have elements to contribute
+    for (let i = 0; i < arrays.length; i++) {
+      if (pointers[i] < arrays[i].length) {
+        availableIndices.push(i);
       }
-    } else if (hasMoreArr1) {
-      // If only arr1 has elements left, push from arr1
-      result.push(arr1[i]);
-      i++;
-    } else if (hasMoreArr2) {
-      // If only arr2 has elements left, push from arr2
-      result.push(arr2[j]);
-      j++;
     }
+
+    // If no arrays have elements left, break the loop
+    if (availableIndices.length === 0) {
+      break;
+    }
+
+    // Randomly select one of the available arrays
+    const randomIndex = Math.floor(Math.random() * availableIndices.length);
+    const selectedArrayIndex = availableIndices[randomIndex];
+
+    // Push the element from the selected array to the result
+    result.push(arrays[selectedArrayIndex][pointers[selectedArrayIndex]]);
+
+    // Increment the pointer for the array from which an element was taken
+    pointers[selectedArrayIndex]++;
   }
 
   return result;
 }
 
+
 async function main(): Promise<void> {
     console.log("Welcome to Jockey!");
 
     const systemPrompt = await readFile('./system_prompt.md', 'utf8');
-    console.log("---------- System Prompt -----------");
-    console.log(systemPrompt);
-    console.log("------------------------------------");
-
     const tts = new TextToSpeechClient({projectId: 'dolores-cb057'});
     const vertexAI = new VertexAI({project: 'dolores-cb057', location: 'us-west1'});
     
     const speechWriter = vertexAI.getGenerativeModel({
         model: 'gemini-2.5-pro',
+        generationConfig: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+                type: SchemaType.OBJECT,
+                properties: {
+                    intro: {
+                        type: SchemaType.STRING,
+                        description: 'The one-line introduction to the article',
+                        nullable: false,
+                        example: 'Here\'s an interesting article from The Verge about AI.'
+                    },
+                    formal: {
+                        type: SchemaType.STRING,
+                        description: 'The formal summary of the article',
+                        nullable: false,
+                        example: 'The Verge reports that AI is revolutionizing the tech industry with new advancements in natural language processing and computer vision.'
+                    },
+                    informal: {
+                        type: SchemaType.STRING,
+                        description: 'The informal opinion piece of the news anchor',
+                        nullable: false,
+                        example: 'Honestly, I think AI is both exciting and a bit scary. It\'s amazing what it can do, but we need to be careful about how we use it.'
+                    }
+                },
+                required: ['intro', 'formal', 'informal'],
+                nullable: false,
+            }
+        },
         systemInstruction: {
             role: 'system',
             parts: [{"text": systemPrompt}]
         },
     });
 
-    const the_verge = await readTheVerge();
-    the_verge.reverse(); // Reverse the order to get the oldest articles first
-
+    const the_verge_long_form = await readTheVergeLongForm();
+    const the_verge_quick_posts = await readTheVergeQuickPosts();
     const ars_technica = await readArsTechnica();
-    ars_technica.reverse(); // Reverse the order to get the oldest articles first
 
-    const articles = randomInterleaveArrays(the_verge, ars_technica);
+    const articles = interleaveArrays(the_verge_quick_posts, the_verge_long_form, ars_technica).slice(0, 5);
+
+    for (const article of articles) {
+        console.log('-----------------------------------');
+        article.print();
+    }
+    console.log('-----------------------------------');
 
     const script_promises: Promise<Script>[] = [];
     
@@ -302,9 +345,10 @@ async function main(): Promise<void> {
 
     for (const promise of script_promises) {
         const script = await promise;
+        console.log('-----------------------------------');
         await playScript(script);
         await delay(1000); // Wait for 1 second before playing the next script
     }
+    console.log('-----------------------------------');
 }
-
 main()
