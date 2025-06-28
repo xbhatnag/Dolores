@@ -181,6 +181,27 @@ async function readArsTechnica(): Promise<Article[]> {
     });
 }
 
+async function readHackADay(): Promise<Article[]> {
+    const parser = new Parser({
+        customFields: {
+            item: [['content:encoded', 'details']],
+        },
+    });
+    const feed = await parser.parseURL('https://hackaday.com/blog/feed/');
+    return feed.items.map(item => {
+        const article = new Article();
+        article.source = 'Hack A Day';
+        article.title = item.title!.trim();
+        article.author = item.creator!.trim();
+        var content = decodeHTML(stripHtml(item.details!)).trim()
+        article.content = content;
+
+        article.url = item.link!.trim();
+        
+        return article;
+    });
+}
+
 function flipCoin(odds: number = 0.5): boolean {
     return Math.random() < odds;
 }
@@ -328,8 +349,14 @@ async function main(): Promise<void> {
     const the_verge_long_form = await readTheVergeLongForm();
     const the_verge_quick_posts = await readTheVergeQuickPosts();
     const ars_technica = await readArsTechnica();
+    const hack_a_day = await readHackADay();
 
-    const articles = interleaveArrays(the_verge_quick_posts, the_verge_long_form, ars_technica).slice(0, 5);
+    const articles = interleaveArrays(
+        hack_a_day,
+        the_verge_quick_posts,
+        the_verge_long_form,
+        ars_technica
+    ).slice(0, 5);
 
     for (const article of articles) {
         console.log('-----------------------------------');
