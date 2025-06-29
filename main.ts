@@ -5,6 +5,7 @@ import { readFile, rm } from "node:fs/promises";
 import { GenerativeModel, SchemaType, VertexAI } from '@google-cloud/vertexai';
 import { Queue } from './queue.js';
 import { execPromise, interleaveArrays, getRandomElement, stripHtml, delay } from './utils.js';
+import { exec, ChildProcess } from 'node:child_process';
 
 const chirp3_voices = [
         "Puck",
@@ -12,7 +13,7 @@ const chirp3_voices = [
         "Laomedeia",
         "Achird",
         "Sadachbia",
-        "Kore",
+        // "Kore",
         // "Umbriel",
         // "Leda",
         // "Aoede",
@@ -72,6 +73,10 @@ class Script {
 
 async function playOnce(audio_file: string): Promise<void> {
     await execPromise(`ffplay -v 0 -nodisp -autoexit ${audio_file}`);
+}
+
+function playLoop(audio_file: string): ChildProcess {
+    return exec(`ffplay -v 0 -nodisp -loop 0 ${audio_file}`);
 }
 
 async function playOnceAndDelete(audio_file: string): Promise<void> {
@@ -354,15 +359,34 @@ async function main(): Promise<void> {
     // and generate scripts while we play them.
     scriptWriterLoop(scripts);
 
-    await playOnce('intro.mp3'); // Play an intro sound
+    var waitingAudioProcess: ChildProcess | undefined;
+
     while (true) {
-        if (scripts.isEmpty()) {
-            console.log("No scripts available. Waiting for new scripts to be generated...");
-            await playOnce('waiting.mp3'); // Play a waiting sound
-            continue;
+        while (scripts.isEmpty()) {
+            await delay(1000); // Wait for 1 second before checking again
+
+            // Start the waiting sound if it's not already playing
+            if (waitingAudioProcess === undefined) {
+                waitingAudioProcess = playLoop('waiting.mp3');
+            }
         }
-        await delay(700); // Wait for 1 seconds before playing the next script
-        await playOnce('transition.mp3'); // Play a transition sound
+
+        // We have a script to play now.
+        if (waitingAudioProcess) {
+            // If we were playing a waiting sound, kill it
+            waitingAudioProcess.kill();
+            waitingAudioProcess = undefined;
+
+            // Wait for a short time to let the sound stop
+            await delay(200);
+
+            // Play the intro sound because this is the first script in a while
+            await playOnce('intro.mp3');
+        } else {
+            // Transitioning from an old script to a new one
+            await delay(700); // Wait for 1 seconds before playing the next script
+            await playOnce('transition.mp3'); // Play a transition sound
+        }
         const script = scripts.dequeue()!;
         await playScript(script);
     }
