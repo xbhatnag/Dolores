@@ -86,7 +86,7 @@ async function playOnceAndDelete(audio_file: string): Promise<void> {
 
 async function playScript(script: Script): Promise<void> {
     // Print the script text
-    console.log(`VOICE = ${script.voice}`);
+    console.log(`🗣️ Narrated by ${script.voice}`);
 
     var script_text = '';
     if (script.intro) {
