@@ -7,7 +7,82 @@ import Parser from 'rss-parser';
 import { decodeHTML } from 'entities';
 import { readFile, rm } from "node:fs/promises";
 import { GenerativeModel, SchemaType, VertexAI } from '@google-cloud/vertexai';
-import { randomInt } from "node:crypto";
+import { log } from "node:console";
+
+class Queue<T> {
+  private data: T[] = [];
+
+  /**
+   * Adds an element to the back of the queue.
+   * @param element The element to add.
+   */
+  enqueue(element: T): void {
+    this.data.push(element);
+  }
+
+  /**
+   * Removes and returns the element from the front of the queue.
+   * Returns undefined if the queue is empty.
+   */
+  dequeue(): T | undefined {
+    if (this.isEmpty()) {
+      return undefined;
+    }
+    return this.data.shift();
+  }
+
+  /**
+   * Checks if the queue is empty.
+   */
+  isEmpty(): boolean {
+    return this.data.length === 0;
+  }
+
+  /**
+   * Returns the number of elements in the queue.
+   */
+  size(): number {
+    return this.data.length;
+  }
+}
+
+const chirp3_voices = [
+        "Puck",
+        "Achernar",
+        "Laomedeia",
+        "Achird",
+        "Sadachbia",
+        "Kore",
+        "Umbriel",
+        // "Leda",
+        // "Aoede",
+        // "Charon",
+        // "Fenrir",
+        // "Orus",
+        // "Zephyr",
+        // "Algenib",
+        // "Algieba",
+        // "Alnilam",
+        // "Autonoe",
+        // "Callirrhoe",
+        // "Despina",
+        // "Enceladus",
+        // "Erinome",
+        // "Gacrux",
+        // "Iapetus",
+        // "Pulcherrima",
+        // "Rasalgethi",
+        // "Sadaltager",
+        // "Schedar",
+        // "Sulafat",
+        // "Vindemiatrix",
+        // "Zubenelgenubi",
+    ]
+
+function getRandomElement<T>(list: T[]): T {
+  const randomIndex = Math.floor(Math.random() * list.length);
+  return list[randomIndex]!;
+}
 
 const execPromise = util.promisify(exec);
 
@@ -34,12 +109,13 @@ class Article {
     author!: string;
     content!: string;
     url!: string;
+    pubDate!: Date;
 
     // Print the article information
     print() {
-        console.log(`📰 ${this.title}`);
-        console.log(`✍️ ${this.author} @ ${this.source}`);
-        console.log(`🌐 ${this.url}`)
+        console.log(
+            `-----------------------------------\n📰 ${this.title}\n✍️ ${this.author} @ ${this.source}\n🌐 ${this.url}\n📅 ${this.pubDate.toLocaleDateString()}\n-----------------------------------`
+        )
     }
 }
 
@@ -51,51 +127,60 @@ class ScriptPiece {
 class Script {
     // The article that this script is based on
     article!: Article;
-
     intro?: ScriptPiece;
     formal!: ScriptPiece;
     informal?: ScriptPiece;
+    voice!: string;
 }
 
-async function playAndDeleteAudio(audio_file: string): Promise<void> {
+async function playOnce(audio_file: string): Promise<void> {
     await execPromise(`ffplay -v 0 -nodisp -autoexit ${audio_file}`);
+}
+
+async function playOnceAndDelete(audio_file: string): Promise<void> {
+    await playOnce(audio_file);
     await rm(audio_file);
 }
 
 async function playScript(script: Script): Promise<void> {
     // Print the script text
+    console.log(`VOICE = ${script.voice}`);
+
+    var script_text = '';
     if (script.intro) {
-        console.log(script.intro.text);
-        console.log('');
+        script_text += script.intro.text;
+        script_text += '\n\n';
     }
-    console.log(script.formal.text);
+    script_text += script.formal.text;
     if (script.informal) {
-        console.log('');
-        console.log(script.informal.text);
+        script_text += '\n\n';
+        script_text += script.informal.text;
     }
+    script_text += '\n\n';
+    console.log(script_text);
 
     // Play the audio files in order
     if (script.intro) {
-        await playAndDeleteAudio(script.intro.audio_file);
+        await playOnceAndDelete(script.intro.audio_file);
         await delay(500); // Wait for 500ms before playing formal part
     }
 
-    await playAndDeleteAudio(script.formal.audio_file);
+    await playOnceAndDelete(script.formal.audio_file);
 
     if (script.informal) {
         await delay(700); // Wait for 700ms before playing informal part
-        await playAndDeleteAudio(script.informal.audio_file);
+        await playOnceAndDelete(script.informal.audio_file);
     }
     
     await delay(1000); // Wait for 1 second before playing the next script
 }
 
-async function getAudio(tts: TextToSpeechClient, text: string, filename: string): Promise<string> {
+async function getAudio(tts: TextToSpeechClient, text: string, filename: string, voice: string): Promise<string> {
     // Construct the TTS request
     const request: protos.google.cloud.texttospeech.v1.ISynthesizeSpeechRequest = {
         input: {text: text},
         // Select the language and SSML voice gender (optional)
-        voice: {name: 'en-US-Chirp3-HD-Achernar', languageCode: 'en-US'},
+        voice: {name: `en-US-Chirp3-HD-${voice}`, languageCode: 'en-US'},
         // select the type of audio encoding
         audioConfig: {audioEncoding: 'MP3'},
     };
@@ -130,6 +215,7 @@ async function readTheVergeLongForm(): Promise<Article[]> {
             summary = summary.slice(0, -9).trim();
             summary += '[…]'; // Add ellipsis to indicate truncation
         }
+        article.pubDate = new Date(item.pubDate!);
         article.content = summary;
         article.url = item.link!;
         
@@ -151,6 +237,7 @@ async function readTheVergeQuickPosts(): Promise<Article[]> {
         article.author = item.author!;
         article.content = item.summary!;
         article.url = item.link!;
+        article.pubDate = new Date(item.pubDate!);
         
         return article;
     });
@@ -174,7 +261,7 @@ async function readArsTechnica(): Promise<Article[]> {
             content = content.slice(0, -27).trim(); // Remove the trailing '
         }
         article.content = content;
-
+        article.pubDate = new Date(item.pubDate!);
         article.url = item.link!.trim();
         
         return article;
@@ -195,7 +282,7 @@ async function readHackADay(): Promise<Article[]> {
         article.author = item.creator!.trim();
         var content = decodeHTML(stripHtml(item.details!)).trim()
         article.content = content;
-
+        article.pubDate = new Date(item.pubDate!);
         article.url = item.link!.trim();
         
         return article;
@@ -231,25 +318,28 @@ async function createScript(
     const text = result.response.candidates![0].content.parts[0].text!;
     const object = JSON.parse(text); // Validate the JSON structure
 
+    // Pick a random Chirp3 voice
+    script.voice = getRandomElement(chirp3_voices);
+
     if (flipCoin()) {
         // 50-50 odds of including an intro
         script.intro = new ScriptPiece();
         script.intro.text = object.intro.trim();
         const intro_file_name = `${filename}_intro`;
-        script.intro.audio_file = await getAudio(tts, script.intro.text, intro_file_name);
+        script.intro.audio_file = await getAudio(tts, script.intro.text, intro_file_name, script.voice);
     }
 
     script.formal = new ScriptPiece();
     script.formal.text = object.formal.trim();
     const formal_file_name = `${filename}_formal`;
-    script.formal.audio_file = await getAudio(tts, script.formal.text, formal_file_name);
+    script.formal.audio_file = await getAudio(tts, script.formal.text, formal_file_name, script.voice);
 
     if (flipCoin(0.5)) {
         // 50-50 odds of including an opinion piece
         script.informal = new ScriptPiece();
         script.informal.text = object.informal.trim(); 
         const informal_file_name = `${filename}_informal`;
-        script.informal.audio_file = await getAudio(tts, script.informal.text, informal_file_name);
+        script.informal.audio_file = await getAudio(tts, script.informal.text, informal_file_name, script.voice);
     }
 
     return script;
@@ -302,10 +392,7 @@ function interleaveArrays<T>(...arrays: T[][]): T[] {
   return result;
 }
 
-
-async function main(): Promise<void> {
-    console.log("Welcome to Jockey!");
-
+async function scriptWriterLoop(scripts: Queue<Script>): Promise<void> {
     const systemPrompt = await readFile('./system_prompt.md', 'utf8');
     const tts = new TextToSpeechClient({projectId: 'dolores-cb057'});
     const vertexAI = new VertexAI({project: 'dolores-cb057', location: 'us-west1'});
@@ -359,23 +446,36 @@ async function main(): Promise<void> {
     ).slice(0, 5);
 
     for (const article of articles) {
-        console.log('-----------------------------------');
         article.print();
     }
-    console.log('-----------------------------------');
-
-    const script_promises: Promise<Script>[] = [];
     
     for (const [index, article] of articles.entries()) {
-        script_promises.push(createScript(tts, speechWriter, article, `script_${index}`));
+        const script = await createScript(tts, speechWriter, article, `script_${index}`);
+        scripts.enqueue(script);
     }
+}
 
-    for (const promise of script_promises) {
-        const script = await promise;
-        console.log('-----------------------------------');
+
+async function main(): Promise<void> {
+    console.log("Welcome to Jockey!");
+
+    const scripts = new Queue<Script>();
+    
+    // The script writer loop will run in the background
+    // and generate scripts while we play them.
+    scriptWriterLoop(scripts);
+
+    await playOnce('intro.mp3'); // Play an intro sound
+    while (true) {
+        if (scripts.isEmpty()) {
+            console.log("No scripts available. Waiting for new scripts to be generated...");
+            await playOnce('waiting.mp3'); // Play a waiting sound
+            continue;
+        }
+        await delay(700); // Wait for 1 seconds before playing the next script
+        await playOnce('transition.mp3'); // Play a transition sound
+        const script = scripts.dequeue()!;
         await playScript(script);
-        await delay(1000); // Wait for 1 second before playing the next script
     }
-    console.log('-----------------------------------');
 }
 main()

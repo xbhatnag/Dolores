@@ -18,9 +18,9 @@
   "dependencies": {
     "@google-cloud/text-to-speech": "^6.1.0",
     "@google-cloud/vertexai": "^1.10.0",
+    "entities": "^2.2.0",
     "play-sound": "^1.1.6",
     "rss-parser": "^3.13.0",
-    "entities": "^2.2.0",
     "util": "^0.12.5",
     "xml2js": "^0.6.2"
   }
