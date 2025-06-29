@@ -1,50 +1,10 @@
-import puppeteer from "puppeteer";
 import { TextToSpeechClient, protos } from '@google-cloud/text-to-speech';
 import { promises as fs } from 'fs';
-import { exec } from 'node:child_process';
-import util from 'node:util'
 import Parser from 'rss-parser';
-import { decodeHTML } from 'entities';
 import { readFile, rm } from "node:fs/promises";
 import { GenerativeModel, SchemaType, VertexAI } from '@google-cloud/vertexai';
-import { log } from "node:console";
-
-class Queue<T> {
-  private data: T[] = [];
-
-  /**
-   * Adds an element to the back of the queue.
-   * @param element The element to add.
-   */
-  enqueue(element: T): void {
-    this.data.push(element);
-  }
-
-  /**
-   * Removes and returns the element from the front of the queue.
-   * Returns undefined if the queue is empty.
-   */
-  dequeue(): T | undefined {
-    if (this.isEmpty()) {
-      return undefined;
-    }
-    return this.data.shift();
-  }
-
-  /**
-   * Checks if the queue is empty.
-   */
-  isEmpty(): boolean {
-    return this.data.length === 0;
-  }
-
-  /**
-   * Returns the number of elements in the queue.
-   */
-  size(): number {
-    return this.data.length;
-  }
-}
+import { Queue } from './queue.js';
+import { execPromise, interleaveArrays, getRandomElement, stripHtml, delay } from './utils.js';
 
 const chirp3_voices = [
         "Puck",
@@ -53,7 +13,7 @@ const chirp3_voices = [
         "Achird",
         "Sadachbia",
         "Kore",
-        "Umbriel",
+        // "Umbriel",
         // "Leda",
         // "Aoede",
         // "Charon",
@@ -79,29 +39,6 @@ const chirp3_voices = [
         // "Zubenelgenubi",
     ]
 
-function getRandomElement<T>(list: T[]): T {
-  const randomIndex = Math.floor(Math.random() * list.length);
-  return list[randomIndex]!;
-}
-
-const execPromise = util.promisify(exec);
-
-function stripHtml(str: string): string {
-  str = str.replace(/([^\n])<\/?(h|br|p|ul|ol|li|blockquote|section|table|tr|div)(?:.|\n)*?>([^\n])/gm, '$1\n$3')
-  str = str.replace(/<(?:.|\n)*?>/gm, '');
-  return str;
-}
-
-async function openWebpage(url: string): Promise<void> {
-    const browser = await puppeteer.launch({headless: true});
-    const page = await browser.newPage();
-    await page.setViewport({ width: 1920, height: 1080 });
-    await page.goto(url);
-    const title = await page.title();
-    console.log(`Title of the page is: ${title}`);
-    await page.screenshot({ path: '/tmp/screenshot.png' });
-    await browser.close();
-}
 
 class Article {
     source!: string;
@@ -255,7 +192,7 @@ async function readArsTechnica(): Promise<Article[]> {
         article.source = 'Ars Technica';
         article.title = item.title!.trim();
         article.author = item.creator!.trim();
-        var content = decodeHTML(stripHtml(item.details!)).trim()
+        var content = stripHtml(item.details!)
 
         if (content.endsWith('Read full article\nComments')) {
             content = content.slice(0, -27).trim(); // Remove the trailing '
@@ -280,8 +217,7 @@ async function readHackADay(): Promise<Article[]> {
         article.source = 'Hack A Day';
         article.title = item.title!.trim();
         article.author = item.creator!.trim();
-        var content = decodeHTML(stripHtml(item.details!)).trim()
-        article.content = content;
+        article.content = stripHtml(item.details!);
         article.pubDate = new Date(item.pubDate!);
         article.url = item.link!.trim();
         
@@ -343,53 +279,6 @@ async function createScript(
     }
 
     return script;
-}
-
-function delay(ms: number) {
-    return new Promise( resolve => setTimeout(resolve, ms) );
-}
-
-/**
- * Interleaves an arbitrary number of arrays (N arrays) with randomness.
- * Elements are picked randomly from any non-empty array until all arrays are exhausted.
- *
- * @template T The type of elements in the arrays.
- * @param {...T[][]} arrays An arbitrary number of arrays to interleave.
- * @returns {T[]} A new array with elements interleaved from all input arrays.
- */
-function interleaveArrays<T>(...arrays: T[][]): T[] {
-  const result: T[] = [];
-  // An array to keep track of the current index for each input array
-  const pointers = new Array(arrays.length).fill(0);
-
-  // Loop as long as there's at least one array with remaining elements
-  while (true) {
-    const availableIndices: number[] = [];
-
-    // Find which arrays still have elements to contribute
-    for (let i = 0; i < arrays.length; i++) {
-      if (pointers[i] < arrays[i].length) {
-        availableIndices.push(i);
-      }
-    }
-
-    // If no arrays have elements left, break the loop
-    if (availableIndices.length === 0) {
-      break;
-    }
-
-    // Randomly select one of the available arrays
-    const randomIndex = Math.floor(Math.random() * availableIndices.length);
-    const selectedArrayIndex = availableIndices[randomIndex];
-
-    // Push the element from the selected array to the result
-    result.push(arrays[selectedArrayIndex][pointers[selectedArrayIndex]]);
-
-    // Increment the pointer for the array from which an element was taken
-    pointers[selectedArrayIndex]++;
-  }
-
-  return result;
 }
 
 async function scriptWriterLoop(scripts: Queue<Script>): Promise<void> {
