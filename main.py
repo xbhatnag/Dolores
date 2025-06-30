@@ -2,6 +2,7 @@ import os
 import time
 import random
 import json
+from typing import List
 import feedparser
 import requests
 from google import genai
@@ -11,10 +12,11 @@ from google.cloud import texttospeech
 from subprocess import Popen, call
 import bs4
 import threading
-from queue import SimpleQueue, Empty as QueueEmpty
+from queue import SimpleQueue, Empty as QueueEmpty, LifoQueue
 from dateutil.parser import parse as parse_date
 import re
 from pydantic import BaseModel
+from datetime import datetime
 
 # These are the good voices from Chirp3
 CHIRP3_VOICES = [
@@ -40,16 +42,6 @@ def strip_html(html: str) -> str:
     soup = bs4.BeautifulSoup(html, features="html.parser")
     text = soup.get_text()
     return text.strip()
-
-def interleave_arrays(*arrays):
-    # Interleave multiple lists
-    result = []
-    for group in zip(*arrays):
-        result.extend(group)
-    # Add leftovers
-    for arr in arrays:
-        result.extend(arr[len(arrays[0]):])
-    return result
 
 class Article:
     def __init__(self, source, title, author, content, url, pub_date):
@@ -112,8 +104,9 @@ def generate_audio(tts_client: texttospeech.TextToSpeechClient, text: str, filen
         out.write(response.audio_content)
     return path
 
-def read_the_verge_long_form():
+def read_the_verge_long_form() -> List[Article]:
     feed = feedparser.parse('https://www.theverge.com/rss/index.xml')
+    print(f"Got {len(feed.entries)} from The Verge - Long Form")
     articles = []
     for entry in feed.entries:
         summary = entry.summary
@@ -130,8 +123,9 @@ def read_the_verge_long_form():
 def num_words(input: str):
     return len(input.split())
 
-def read_the_verge_quick_posts():
+def read_the_verge_quick_posts() -> List[Article]:
     feed = feedparser.parse('https://www.theverge.com/rss/quickposts')
+    print(f"Got {len(feed.entries)} from The Verge - Quick Posts")
     articles = []
     for entry in feed.entries:
         content = strip_html(entry.summary)
@@ -153,11 +147,12 @@ def read_the_verge_quick_posts():
         ))
     return articles
 
-def read_ars_technica():
+def read_ars_technica() -> List[Article]:
     feed = feedparser.parse('https://feeds.arstechnica.com/arstechnica/index')
+    print(f"Got {len(feed.entries)} from Ars Technica")
     articles = []
     for entry in feed.entries:
-        content = strip_html(getattr(entry, 'content', [{'value': ''}])[0]['value'])
+        content = strip_html(entry.content)
         content = content.removesuffix('Comments').strip()
         content = content.removesuffix('Read full article').strip()
         articles.append(Article(
@@ -170,11 +165,12 @@ def read_ars_technica():
         ))
     return articles
 
-def read_hackaday():
+def read_hackaday() -> List[Article]:
     feed = feedparser.parse('https://hackaday.com/blog/feed/')
+    print(f"Got {len(feed.entries)} from Hackaday")
     articles = []
     for entry in feed.entries:
-        content = strip_html(getattr(entry, 'content', [{'value': ''}])[0]['value'])
+        content = strip_html(entry.content)
         articles.append(Article(
             source='Hack A Day',
             title=entry.title,
@@ -200,9 +196,10 @@ def create_script(
         filename: str,
         system_prompt: str,
 ):
-    voice = random.choice(CHIRP3_VOICES)
+    # Start a new script
     script = Script(article, voice)
 
+    # Ask Gemini to write the script
     prompt = f"""Move onto this article:
 
 News Organization: {article.source}
@@ -223,33 +220,61 @@ Content: {article.content}"""
     formal_text = response.parsed.formal
     informal_text = response.parsed.informal
 
+    # Pick a voice for the TTS
+    voice = random.choice(CHIRP3_VOICES)
+
+    # Sometimes use the intro statement
     if flip_coin():
         intro_audio = generate_audio(tts_client, intro_text, f"{filename}_intro", script.voice)
         script.intro = ScriptPiece(intro_text, intro_audio)
 
+    # Always use the formal part of the script
     formal_audio = generate_audio(tts_client, formal_text, f"{filename}_formal", script.voice)
     script.formal = ScriptPiece(formal_text, formal_audio)
+
+    # Sometimes use the informal part of the script
     if flip_coin():
         informal_audio = generate_audio(tts_client, informal_text, f"{filename}_informal", script.voice)
         script.informal = ScriptPiece(informal_text, informal_audio)
     
     return script
 
-def script_writer_loop(scripts: SimpleQueue[Script]):
-    the_verge_long_form = read_the_verge_long_form()
-    the_verge_quick_posts = read_the_verge_quick_posts()
-    ars_technica = read_ars_technica()
-    hack_a_day = read_hackaday()
-    articles = interleave_arrays(
-        hack_a_day,
-        the_verge_quick_posts,
-        the_verge_long_form,
-        ars_technica
-    )
+def journalist_loop(to_process: SimpleQueue[Article]):
+    last_modified: datetime = None
 
-    for article in articles:
-        article.print()
+    def is_new_article(a: Article) -> bool:
+        return last_modified and a.pub_date > last_modified
 
+    while True:
+        print("Running cycle...")
+        the_verge_long_form = read_the_verge_long_form()
+        the_verge_quick_posts = read_the_verge_quick_posts()
+        ars_technica = read_ars_technica()
+        hack_a_day = read_hackaday()
+
+        # Put em all together
+        articles = (hack_a_day + 
+            the_verge_quick_posts +
+            the_verge_long_form +
+            ars_technica)
+        
+        # Sort by publishing date
+        articles.sort(key=lambda a: a.pub_date)        
+
+        # Add them to the queue for script writing
+        for article in articles:
+            if not is_new_article(article):
+                print(f"{article.title} was already seen.")
+                break
+            
+            # Otherwise process the article
+            article.print()
+            to_process.put(article)
+        print("Cycle complete. Checking again in 60 seconds...")
+        last_modified = datetime.now()
+        time.sleep(60)
+
+def script_writer_loop(articles: SimpleQueue[Article], scripts: SimpleQueue[Script]):
     tts_client = texttospeech.TextToSpeechClient()
     genai_client = genai.Client(
         vertexai=True,
@@ -261,33 +286,61 @@ def script_writer_loop(scripts: SimpleQueue[Script]):
     with open('system_prompt.md') as f:
         system_prompt = f.read()
 
-    for idx, article in enumerate(articles):
-        script = create_script(tts_client, genai_client, article, f"{article.source}_{idx}", system_prompt)
+    counter = 0
+
+    while True:
+        # Get the next article 
+        article = articles.get()
+
+        # Make a script
+        script = create_script(tts_client, genai_client, article, f"{article.source}_{counter}", system_prompt)
+
+        # Hand it to the news anchor for narrating
         scripts.put(script)
+
+        # Move to the next article
+        counter += 1
 
 def news_anchor_loop(scripts: SimpleQueue[Script]):
     waiting_audio_process = None
     while True:
         try:
+            # If an article is available right now,
+            # transition to it immediately
             script = scripts.get_nowait()
             time.sleep(0.7)
             play_once('transition.mp3')
         except QueueEmpty:
+            # Otherwise, play the longer "waiting music".
+            # When an article comes in, stop the waiting
+            # music and play the intro.
             waiting_audio_process = play_loop('waiting.mp3')
             script = scripts.get()
             waiting_audio_process.terminate()
             waiting_audio_process = None
             time.sleep(0.5)
             play_once('intro.mp3')
+
+        # Finally play the entire script
         script.play()
 
 def main():
     print("Welcome to Jockey!")
+    articles: SimpleQueue[Article] = SimpleQueue()
     scripts: SimpleQueue[Script] = SimpleQueue()
-    writer_thread = threading.Thread(target=script_writer_loop, args=(scripts,))
-    writer_thread.daemon = True
-    writer_thread.start()
-    news_anchor_loop(scripts)
+    
+    journalist_thread = threading.Thread(target=journalist_loop, args=(articles,))
+    journalist_thread.daemon = True
+    journalist_thread.start()
+
+    while True:
+        pass
+
+    # writer_thread = threading.Thread(target=script_writer_loop, args=(articles, scripts,))
+    # writer_thread.daemon = True
+    # writer_thread.start()
+    
+    # news_anchor_loop(scripts)
 
 if __name__ == "__main__":
     main()
