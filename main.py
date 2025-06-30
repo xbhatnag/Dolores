@@ -5,7 +5,7 @@ import json
 import feedparser
 import requests
 from google import genai
-from google.genai.types import HttpOptions
+from google.genai import types
 
 from google.cloud import texttospeech
 from subprocess import Popen, call
@@ -14,6 +14,7 @@ import threading
 from queue import SimpleQueue, Empty as QueueEmpty
 from dateutil.parser import parse as parse_date
 import re
+from pydantic import BaseModel
 
 # These are the good voices from Chirp3
 CHIRP3_VOICES = [
@@ -187,7 +188,18 @@ def read_hackaday():
 def flip_coin(odds=0.5):
     return random.random() < odds
 
-def create_script(tts_client: texttospeech.TextToSpeechClient, genai_client: genai.Client, article: Article, filename: str):
+class GeneratedScript(BaseModel):
+    intro: str
+    formal: str
+    informal: str
+
+def create_script(
+        tts_client: texttospeech.TextToSpeechClient,
+        genai_client: genai.Client,
+        article: Article,
+        filename: str,
+        system_prompt: str,
+):
     voice = random.choice(CHIRP3_VOICES)
     script = Script(article, voice)
 
@@ -199,18 +211,17 @@ Author: {article.author}
 Content: {article.content}"""
     response = genai_client.models.generate_content(
         model="gemini-2.5-pro",
+        config = types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            response_mime_type="application/json",
+            response_schema=GeneratedScript
+        ),
         contents=prompt,
     )
 
-    obj = json.loads(response.text)
-
-    intro_text = obj['intro'].strip()
-    formal_text = obj['formal'].strip()
-    informal_text = obj['informal'].strip()
-
-    print(intro_text)
-    print(formal_text)
-    print(informal_text)
+    intro_text = response.parsed.intro
+    formal_text = response.parsed.formal
+    informal_text = response.parsed.informal
 
     if flip_coin():
         intro_audio = generate_audio(tts_client, intro_text, f"{filename}_intro", script.voice)
@@ -224,11 +235,11 @@ Content: {article.content}"""
     
     return script
 
-def script_writer_loop(scripts):
+def script_writer_loop(scripts: SimpleQueue[Script]):
     the_verge_long_form = read_the_verge_long_form()
     the_verge_quick_posts = read_the_verge_quick_posts()
     ars_technica = read_ars_technica()
-    hack_a_day = read_hackaday
+    hack_a_day = read_hackaday()
     articles = interleave_arrays(
         hack_a_day,
         the_verge_quick_posts,
@@ -240,11 +251,19 @@ def script_writer_loop(scripts):
         article.print()
 
     tts_client = texttospeech.TextToSpeechClient()
-    genai_client = genai.Client(http_options=HttpOptions(api_version="v1"))
+    genai_client = genai.Client(
+        vertexai=True,
+        project='dolores-cb057',
+        location='us-west1',
+        http_options=types.HttpOptions(api_version="v1")
+    )
+
+    with open('system_prompt.md') as f:
+        system_prompt = f.read()
 
     for idx, article in enumerate(articles):
-        script = create_script(tts_client, genai_client, article, f"{article.source}_{idx}")
-        scripts.enqueue(script)
+        script = create_script(tts_client, genai_client, article, f"{article.source}_{idx}", system_prompt)
+        scripts.put(script)
 
 def news_anchor_loop(scripts: SimpleQueue[Script]):
     waiting_audio_process = None
@@ -265,7 +284,6 @@ def news_anchor_loop(scripts: SimpleQueue[Script]):
 def main():
     print("Welcome to Jockey!")
     scripts: SimpleQueue[Script] = SimpleQueue()
-    # In Python, you can use threading or asyncio for concurrency if needed
     writer_thread = threading.Thread(target=script_writer_loop, args=(scripts,))
     writer_thread.daemon = True
     writer_thread.start()

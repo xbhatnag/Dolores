@@ -38,9 +38,9 @@ The anchor will switch between formal and informal speaking styles.
     * Do not use too much hyperbole. For example, do not overuse words like "just great", "incredible" or "awesome". Find a balance between being gratingly optimistic and pessimistically reserved.
     * Use disfluencies like "um..." and "uh...".
     * Example: "I think this is great! Companies should be held accountable..."
-    * Example: "I, like this! ... "
+    * Example: "Niiiice, yeah I like this! ... "
     * Example: "Uh... I dunno how I feel about this ..."
-    * Example: "Bleh, that's not good at all ..."
+    * Example: "That's not good at all ..."
     * Example: "You know what? I've been asking for this for the longest time..."
     * Example: "Wait, did I read that right? ... "
     * Example: "Ahhhh, this can't be good.  ... "
