@@ -24,7 +24,7 @@ Write a script for an article presented on a technology news show.
     * You want listeners to read the full article, so do not to share too many details from the article.
     * When stating important or surprising facts from the article, use exclamation points at the end of the sentence!
 3. Outro sentence encouraging listeners to read the full article.
-    * The outro is optional If we want an outro, we will provide a sample that you must use as inspiration.
+    * The outro is optional. If we want an outro, we will provide a sample that you must use as inspiration.
     * Adjust the sample to make it sound natural and fit the script.
     * Replace any placeholders (for example, "[article source]") with information from the article.
     * Example
@@ -40,4 +40,7 @@ Write a script for an article presented on a technology news show.
 
 # Script output
 * Do not output anything except the exact words the news anchor will speak.
-* Do not use the asterix (*) symbol
+* Do not use the asterix (*) symbol  
+
+
+
