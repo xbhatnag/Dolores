@@ -1,0 +1,348 @@
+import dataclasses
+import logging
+import random
+import threading
+import time
+from datetime import datetime, timezone
+from queue import Queue
+from typing import List
+
+import bs4
+import feedparser
+from dateutil.parser import parse as parse_date
+from google import genai
+from google.cloud import texttospeech
+
+from script import Script
+
+
+@dataclasses.dataclass
+class WrittenContent:
+    source: str
+    title: str
+    type: str
+    author: str
+    tags: List[str]
+    data: str
+    url: str
+    _pub_date: str
+
+    def __getattr__(self, name):
+        if name == "pub_date":
+            return datetime.fromisoformat(self._pub_date)
+        else:
+            raise AttributeError(
+                f"'{type(self).__name__}' object has no attribute '{name}'"
+            )
+
+    def published_after(self, cmp_date: datetime) -> bool:
+        return self.pub_date > cmp_date
+
+
+# These are the good voices from Chirp3
+CHIRP3_VOICES = [
+    "Puck",
+    "Achernar",
+    "Laomedeia",
+    "Achird",
+    "Sadachbia",
+]
+
+
+def strip_html(html: str) -> str:
+    # Remove HTML tags and decode HTML entities
+    soup = bs4.BeautifulSoup(html, features="html.parser")
+    text = soup.get_text()
+    return text.strip()
+
+
+def normalize_date(date: str) -> str:
+    return parse_date(date).astimezone(timezone.utc).isoformat()
+
+
+def randomize_written_content_type_str() -> str:
+    random.choice(["article", "piece", "story"])
+
+
+def read_the_verge_long_form() -> List[WrittenContent]:
+    feed = feedparser.parse("https://www.theverge.com/rss/index.xml")
+    written_content = []
+    for entry in feed.entries:
+        written_content.append(
+            WrittenContent(
+                source="The Verge",
+                title=strip_html(entry.title),
+                tags=[t.get("term") for t in entry.tags],
+                type=randomize_written_content_type_str(),
+                author=entry.author,
+                data=strip_html(entry.content[0].value),
+                url=entry.link,
+                _pub_date=normalize_date(entry.published),
+            )
+        )
+    return written_content
+
+
+def read_the_verge_quick_posts() -> List[WrittenContent]:
+    feed = feedparser.parse("https://www.theverge.com/rss/quickposts")
+    written_content = []
+    for entry in feed.entries:
+        written_content.append(
+            WrittenContent(
+                source="The Verge",
+                title=strip_html(entry.title),
+                tags=[t.get("term") for t in entry.tags],
+                type="short post",
+                author=entry.author,
+                data=strip_html(entry.content[0].value),
+                url=entry.link,
+                _pub_date=normalize_date(entry.published),
+            )
+        )
+    return written_content
+
+
+def read_ars_technica() -> List[WrittenContent]:
+    feed = feedparser.parse("https://feeds.arstechnica.com/arstechnica/index")
+    written_content = []
+    for entry in feed.entries:
+        data = (
+            strip_html(entry.content[0].value)
+            .removesuffix("Comments")
+            .strip()
+            .removesuffix("Read full article")
+            .strip()
+        )
+        written_content.append(
+            WrittenContent(
+                source="Ars Technica",
+                title=entry.title,
+                type=randomize_written_content_type_str(),
+                tags=[t.get("term") for t in entry.tags],
+                author=entry.author,
+                data=data,
+                url=entry.link.strip(),
+                _pub_date=normalize_date(entry.published),
+            )
+        )
+    return written_content
+
+
+def read_hackaday() -> List[WrittenContent]:
+    feed = feedparser.parse("https://hackaday.com/blog/feed/")
+    written_content = []
+    for entry in feed.entries:
+        written_content.append(
+            WrittenContent(
+                source="Hack A Day",
+                title=entry.title,
+                type=randomize_written_content_type_str(),
+                tags=[t.get("term") for t in entry.tags],
+                author=entry.author,
+                data=strip_html(entry.content[0].value),
+                url=entry.link.strip(),
+                _pub_date=normalize_date(entry.published),
+            )
+        )
+    return written_content
+
+
+def read_daring_fireball() -> List[WrittenContent]:
+    feed = feedparser.parse("https://daringfireball.net/feeds/main")
+    written_content = []
+    for entry in feed.entries:
+        # We want Gruber's pieces, not others'
+        if "sponsors" in entry.id or "linked" in entry.id:
+            continue
+
+        title = getattr(entry, "title", "")
+
+        # What in god's name is this?
+        if not title:
+            continue
+
+        # He does this sometimes
+        title = title.removeprefix("★ ")
+
+        written_content.append(
+            WrittenContent(
+                source="Daring Fireball",
+                title=title,
+                type=randomize_written_content_type_str(),
+                tags=[],
+                author=entry.author,
+                data=strip_html(entry.content[0].value),
+                url=entry.link.strip(),
+                _pub_date=normalize_date(entry.published),
+            )
+        )
+    return written_content
+
+
+def read_content_from_rss(after: datetime) -> List[WrittenContent]:
+    the_verge_long_form = read_the_verge_long_form()
+    the_verge_quick_posts = read_the_verge_quick_posts()
+    ars_technica = read_ars_technica()
+    hack_a_day = read_hackaday()
+    daring_fireball = read_daring_fireball()
+
+    # Put em all together
+    all_written_content = (
+        hack_a_day
+        + the_verge_quick_posts
+        + the_verge_long_form
+        + ars_technica
+        + daring_fireball
+    )
+
+    all_written_content = list(
+        filter(lambda a: a.published_after(after), all_written_content)
+    )
+    all_written_content.sort(key=lambda a: a.pub_date, reverse=True)
+
+    return all_written_content
+
+
+def generate_audio(
+    tts_client: texttospeech.TextToSpeechClient, text: str, filename: str, voice: str
+) -> str:
+    synthesis_input = texttospeech.SynthesisInput(text=text)
+    voice_params = texttospeech.VoiceSelectionParams(
+        language_code="en-US", name=f"en-US-Chirp3-HD-{voice}"
+    )
+    audio_config = texttospeech.AudioConfig(
+        audio_encoding=texttospeech.AudioEncoding.MP3
+    )
+    response = tts_client.synthesize_speech(
+        input=synthesis_input, voice=voice_params, audio_config=audio_config
+    )
+    path = f"/dev/shm/{filename}.mp3"
+    with open(path, "wb") as out:
+        out.write(response.audio_content)
+    return path
+
+
+def create_script(
+    tts_client: texttospeech.TextToSpeechClient,
+    chat: genai.chats.Chat,
+    content: WrittenContent,
+    filename: str,
+    intros: list[str],
+    credits: list[str],
+    outros: list[str],
+):
+    # Pick a voice for the TTS
+    voice = random.choice(CHIRP3_VOICES)
+
+    # Determine if we want an intro and an outro
+    want_intro = random.random() < 0.4
+    want_outro = random.random() < 0.6
+
+    # Ask Gemini to write the script
+    prompt = ""
+
+    if want_intro:
+        intro_sample = random.choice(intros)
+        prompt += '\nIntro Sample: "' + intro_sample + '"'
+    credit_sample = random.choice(credits)
+    prompt += '\nCredit Sample: "' + credit_sample + '"'
+    if want_outro:
+        intro_sample = random.choice(outros)
+        prompt += '\nOutro Sample: "' + intro_sample + '"'
+
+    prompt += f"""Source: {content.source}
+Title: {content.title}
+Content Type: {content.type}
+Author: {content.author}"""
+
+    if content.tags:
+        prompt += f"\nTags: {",".join(content.tags)}"
+
+    prompt += f"\nContent: {content.data}" ""
+
+    response = chat.send_message(
+        message=prompt,
+    )
+    audio_file = generate_audio(tts_client, response.text, filename, voice)
+
+    display_text = f"""{content.title}
+by {content.author} @ {content.source}
+
+{content.url}
+
+{response.text}
+"""
+
+    return Script(display_text=display_text, audio_file=audio_file)
+
+
+def research_loop(queue: Queue, after: datetime):
+    logging.info("Reading prompts...")
+    with open("system_prompt.md") as f:
+        system_prompt = f.read()
+
+    with open("intros.txt") as f:
+        intros = f.read().splitlines()
+
+    with open("credits.txt") as f:
+        credits = f.read().splitlines()
+
+    with open("outros.txt") as f:
+        outros = f.read().splitlines()
+
+    tts = texttospeech.TextToSpeechClient()
+    tools = []
+    # tools.append(types.Tool(url_context=types.UrlContext))
+    # tools.append(types.Tool(google_search=types.GoogleSearch))
+    chat = genai.Client(
+        vertexai=True,
+        project="dolores-cb057",
+        location="us-west1",
+        http_options=genai.types.HttpOptions(api_version="v1"),
+    ).chats.create(
+        model="gemini-2.5-pro",
+        config=genai.types.GenerateContentConfig(
+            system_instruction=system_prompt, tools=tools
+        ),
+    )
+
+    count = 0
+
+    while True:
+        logging.info("Getting written_content after %s", after)
+
+        # Get all content from RSS feeds
+        new_content = read_content_from_rss(after=after)
+
+        # TODO: Ask Gemini to build context around the written_content
+        logging.info("%d new written content read!", len(new_content))
+
+        if new_content:
+            # Set the next date to the most recent written_content
+            after = new_content[0].pub_date
+
+            # Create scripts for the content
+            for content in new_content:
+                script = create_script(
+                    tts,
+                    chat,
+                    content,
+                    f"{count}_{content.source}",
+                    intros,
+                    credits,
+                    outros,
+                )
+                queue.put(script)
+                count += 1
+
+        # Wait until we're running out of content
+        logging.info("Taking a break...")
+        time.sleep(60)
+
+
+def spawn_written_content_researcher(queue: Queue, after: datetime) -> threading.Thread:
+    logging.info("Spawning WrittenContent Researcher")
+    thread = threading.Thread(target=research_loop, args=(queue, after))
+    thread.daemon = True
+    thread.start()
+    return thread

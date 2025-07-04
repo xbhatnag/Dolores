@@ -1,5 +1,4 @@
-[article author] from [article source] has written a [piece/article/post] about
-[article source] published a [piece/article/post] talking about
-A new [piece/article/post] published to [article source] by [article author]
-[article author] has written a [piece/story/post/article] with information about
-[article author] from [article source] is covering this story.
+[author] from [source] has written a [article length] [content type] about
+[source] published a [length] [content type] talking about
+A new [content type] published to [source] by [author] says that
+[author] wrote a [length] [content type] about
