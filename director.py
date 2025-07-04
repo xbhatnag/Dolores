@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from dateutil.parser import parse as parse_date
 from flask import Flask
 
+from factoid import spawn_factoid
 from written_content import spawn_written_content_researcher
 
 queue: Queue = Queue()
@@ -49,6 +50,7 @@ def main():
         after = parse_date(args.after)
 
     spawn_written_content_researcher(queue, after)
+    spawn_factoid(queue)
 
     # Serve HTTP server
     app.run(host="127.0.0.1", port=args.port)

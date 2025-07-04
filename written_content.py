@@ -14,6 +14,7 @@ from google import genai
 from google.cloud import texttospeech
 
 from script import Script
+from tts import choose_random_voice, generate_audio
 
 
 @dataclasses.dataclass
@@ -37,16 +38,6 @@ class WrittenContent:
 
     def published_after(self, cmp_date: datetime) -> bool:
         return self.pub_date > cmp_date
-
-
-# These are the good voices from Chirp3
-CHIRP3_VOICES = [
-    "Puck",
-    "Achernar",
-    "Laomedeia",
-    "Achird",
-    "Sadachbia",
-]
 
 
 def strip_html(html: str) -> str:
@@ -203,25 +194,6 @@ def read_content_from_rss(after: datetime) -> List[WrittenContent]:
     return all_written_content
 
 
-def generate_audio(
-    tts_client: texttospeech.TextToSpeechClient, text: str, filename: str, voice: str
-) -> str:
-    synthesis_input = texttospeech.SynthesisInput(text=text)
-    voice_params = texttospeech.VoiceSelectionParams(
-        language_code="en-US", name=f"en-US-Chirp3-HD-{voice}"
-    )
-    audio_config = texttospeech.AudioConfig(
-        audio_encoding=texttospeech.AudioEncoding.MP3
-    )
-    response = tts_client.synthesize_speech(
-        input=synthesis_input, voice=voice_params, audio_config=audio_config
-    )
-    path = f"/dev/shm/{filename}.mp3"
-    with open(path, "wb") as out:
-        out.write(response.audio_content)
-    return path
-
-
 def create_script(
     tts_client: texttospeech.TextToSpeechClient,
     chat: genai.chats.Chat,
@@ -232,7 +204,7 @@ def create_script(
     outros: list[str],
 ):
     # Pick a voice for the TTS
-    voice = random.choice(CHIRP3_VOICES)
+    voice = choose_random_voice()
 
     # Determine if we want an intro and an outro
     want_intro = random.random() < 0.4
@@ -327,7 +299,7 @@ def research_loop(queue: Queue, after: datetime):
                     tts,
                     chat,
                     content,
-                    f"{count}_{content.source}",
+                    f"{count}_written_content",
                     intros,
                     credits,
                     outros,
@@ -335,9 +307,9 @@ def research_loop(queue: Queue, after: datetime):
                 queue.put(script)
                 count += 1
 
-        # Wait until we're running out of content
-        logging.info("Taking a break...")
-        time.sleep(60)
+                # Take it slow
+                logging.info("Researcher is taking a break...")
+                time.sleep(60)
 
 
 def spawn_written_content_researcher(queue: Queue, after: datetime) -> threading.Thread:
