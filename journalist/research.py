@@ -17,14 +17,16 @@ from script import Script
 from tts import choose_random_voice, generate_audio
 
 from playwright.sync_api import sync_playwright
+from playwright.sync_api import ViewportSize
 
 
-def take_screenshot(page, url: str, filename:str) -> str:
+def take_screenshot(page, url: str, filename: str) -> str:
     page.goto(url)
     data = page.screenshot()
-    with open(f"/dev/shm/{filename}.png", "wb") as f:
+    with open(f"/tmp/{filename}.png", "wb") as f:
         f.write(data)
         f.close()
+
 
 @dataclasses.dataclass
 class WrittenContent:
@@ -213,6 +215,8 @@ def create_script(
     outros: list[str],
     page,
 ):
+    logging.info("Creating new script!")
+
     # Pick a voice for the TTS
     voice = choose_random_voice()
 
@@ -238,7 +242,7 @@ Content Type: {content.type}
 Author: {content.author}"""
 
     if content.tags:
-        prompt += f"\nTags: {",".join(content.tags)}"
+        prompt += f"\nTags: {','.join(content.tags)}"
 
     prompt += f"\nContent: {content.data}" ""
 
@@ -260,7 +264,9 @@ by {content.author} @ {content.source}
 
     screenshot_path = take_screenshot(page, content.url, filename)
 
-    return Script(display_text=display_text, audio_file=audio_file, image_file=screenshot_path)
+    return Script(
+        display_text=display_text, audio_file=audio_file, image_file=screenshot_path
+    )
 
 
 def research_loop(queue: Queue, after: datetime):
@@ -297,7 +303,7 @@ def research_loop(queue: Queue, after: datetime):
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        page = browser.new_page()
+        page = browser.new_page(viewport=ViewportSize(width=1920, height=1080))
 
         while True:
             logging.info("Getting written_content after %s", after)
@@ -322,7 +328,7 @@ def research_loop(queue: Queue, after: datetime):
                         intros,
                         credits,
                         outros,
-                        page
+                        page,
                     )
                     queue.put(script)
                     count += 1

@@ -33,7 +33,7 @@ class InterestingPage:
 def take_screenshot(page, url: urllib.parse.ParseResult, index: int) -> str:
     page.goto(url.geturl())
     data = page.screenshot()
-    with open(f"/dev/shm/page_{index}.png", "wb") as f:
+    with open(f"/tmp/page_{index}.png", "wb") as f:
         f.write(data)
         f.close()
 

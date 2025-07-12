@@ -29,7 +29,7 @@ def generate_audio(
     response = tts_client.synthesize_speech(
         input=synthesis_input, voice=voice_params, audio_config=audio_config
     )
-    path = f"/dev/shm/{filename}.mp3"
+    path = f"/tmp/{filename}.mp3"
     with open(path, "wb") as out:
         out.write(response.audio_content)
     return path
