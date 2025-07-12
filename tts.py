@@ -18,7 +18,7 @@ def choose_random_voice() -> str:
 
 def generate_audio(
     tts_client: texttospeech.TextToSpeechClient, text: str, filename: str, voice: str
-) -> str:
+) -> bytes:
     synthesis_input = texttospeech.SynthesisInput(text=text)
     voice_params = texttospeech.VoiceSelectionParams(
         language_code="en-US", name=f"en-US-Chirp3-HD-{voice}"
@@ -29,7 +29,4 @@ def generate_audio(
     response = tts_client.synthesize_speech(
         input=synthesis_input, voice=voice_params, audio_config=audio_config
     )
-    path = f"/tmp/{filename}.mp3"
-    with open(path, "wb") as out:
-        out.write(response.audio_content)
-    return path
+    return response.audio_content

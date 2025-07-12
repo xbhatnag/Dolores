@@ -3,6 +3,7 @@ import dataclasses
 
 @dataclasses.dataclass
 class Script:
-    display_text: str
-    audio_file: str
-    image_file: str
+    title: str
+    audio_text: str
+    audio_data: bytes
+    image_data: bytes

@@ -18,14 +18,12 @@ from tts import choose_random_voice, generate_audio
 
 from playwright.sync_api import sync_playwright
 from playwright.sync_api import ViewportSize
+from playwright.sync_api import Page
 
 
-def take_screenshot(page, url: str, filename: str) -> str:
+def take_screenshot(page: Page, url: str, filename: str) -> bytes:
     page.goto(url)
-    data = page.screenshot()
-    with open(f"/tmp/{filename}.png", "wb") as f:
-        f.write(data)
-        f.close()
+    return page.screenshot()
 
 
 @dataclasses.dataclass
@@ -213,7 +211,7 @@ def create_script(
     intros: list[str],
     credits: list[str],
     outros: list[str],
-    page,
+    page: Page,
 ):
     logging.info("Creating new script!")
 
@@ -250,22 +248,15 @@ Author: {content.author}"""
         message=prompt,
     )
     script_text = response.text.strip()
-    audio_file = generate_audio(tts_client, script_text, filename, voice)
+    audio_data = generate_audio(tts_client, script_text, filename, voice)
 
-    pub_date_str = content.pub_date.strftime("%d/%M/%Y %I:%M %p")
-    display_text = f"""{content.title}
-by {content.author} @ {content.source}
-{pub_date_str}
-
-{content.url}
-
-{script_text}
-"""
-
-    screenshot_path = take_screenshot(page, content.url, filename)
+    image_data = take_screenshot(page, content.url, filename)
 
     return Script(
-        display_text=display_text, audio_file=audio_file, image_file=screenshot_path
+        title=content.title,
+        audio_text=script_text,
+        image_data=image_data,
+        audio_data=audio_data,
     )
 
 
@@ -303,7 +294,7 @@ def research_loop(queue: Queue, after: datetime):
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        page = browser.new_page(viewport=ViewportSize(width=1920, height=1080))
+        page = browser.new_page(viewport=ViewportSize(width=2560, height=1440))
 
         while True:
             logging.info("Getting written_content after %s", after)
