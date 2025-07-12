@@ -294,7 +294,7 @@ def research_loop(queue: Queue, after: datetime):
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        page = browser.new_page(viewport=ViewportSize(width=2560, height=1440))
+        page = browser.new_page(viewport=ViewportSize(width=1920, height=1080))
 
         while True:
             logging.info("Getting written_content after %s", after)

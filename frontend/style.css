@@ -1,18 +1,28 @@
 body {
-    background-image: url('bliss.jpeg'); /* Replace with your image path */
-    background-size: cover; /* Covers the entire element, cropping if necessary */
-    background-repeat: no-repeat; /* Prevents the image from repeating */
-    background-attachment: fixed; /* Fixes the background relative to the viewport */
-    background-position: center center; /* Centers the image */
+    background-image: url('bliss.jpeg');
+    /* Replace with your image path */
+    background-size: cover;
+    /* Covers the entire element, cropping if necessary */
+    background-repeat: no-repeat;
+    /* Prevents the image from repeating */
+    background-attachment: fixed;
+    /* Fixes the background relative to the viewport */
+    background-position: center center;
+    /* Centers the image */
 }
 
 #start-menu {
-    position: fixed; /* Key property: fixes the element relative to the viewport */
-    bottom: 0;      /* Positions it at the bottom edge of the viewport */
-    left: 0;        /* Positions it at the left edge of the viewport */
-    width: 100%;    /* Makes it span the full width of the viewport */
+    position: fixed;
+    /* Key property: fixes the element relative to the viewport */
+    bottom: 0;
+    /* Positions it at the bottom edge of the viewport */
+    left: 0;
+    /* Positions it at the left edge of the viewport */
+    width: 100%;
+    /* Makes it span the full width of the viewport */
     background-color: #d3d0c9;
-    z-index: 1000; /* Ensures it stays on top of other content */
+    z-index: 1000;
+    /* Ensures it stays on top of other content */
     display: flex;
     flex-direction: row;
     align-items: center;
@@ -32,22 +42,22 @@ body {
 }
 
 #news-window {
-    width:75vw;
-    height:100%;
-    margin:10px
+    width: 75vw;
+    height: 100%;
+    margin: 10px
 }
 
 #narrator-window {
-    width:22vw;
+    width: 22vw;
     height: fit-content;
-    margin:10px
+    margin: 10px
 }
 
 #narrator-img {
     width: 100%
 }
 
-#screenshot {
+#script-img {
     width: 100%;
 }
 
