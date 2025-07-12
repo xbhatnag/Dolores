@@ -1,19 +1,18 @@
-import logging
 import os
 import subprocess
 import time
-from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
 
 import requests
-import urllib3
 
 from script import Script
 
 
 def play_once(audio_file):
     subprocess.run(
-        ["ffplay", "-v", "0", "-nodisp", "-autoexit", audio_file], check=True
+        ["ffplay", "-v", "0", "-nodisp", "-autoexit", audio_file],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
 
 
@@ -23,23 +22,25 @@ def play_once_and_delete(audio_file):
 
 
 def main():
-    logging.basicConfig(format="%(levelname)s: %(message)s")
-    logging.getLogger().setLevel(logging.INFO)
-    logging.info("Welcome to Jockey! I'm the Narrator.")
+    print("Welcome to Jockey! I'm the Narrator.")
 
     while True:
         response = None
+
+        print("Waiting for new content to narrate...")
         while True:
             try:
                 response = requests.get(f"http://localhost:8001/next")
                 break
             except requests.exceptions.RequestException as e:
-                logging.error("Failed to get articles. Waiting...")
-                time.sleep(5)
+                print("Failed to get articles. Waiting for 60 seconds...")
+                time.sleep(60)
 
         json_dict = response.json()
         script = Script(**json_dict)
+        print("-----------------------------------------")
         print(script.display_text)
+        print("-----------------------------------------")
         play_once("transition.mp3")
         play_once_and_delete(script.audio_file)
 

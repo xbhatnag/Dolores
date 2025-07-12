@@ -16,6 +16,15 @@ from google.cloud import texttospeech
 from script import Script
 from tts import choose_random_voice, generate_audio
 
+from playwright.sync_api import sync_playwright
+
+
+def take_screenshot(page, url: str, filename:str) -> str:
+    page.goto(url)
+    data = page.screenshot()
+    with open(f"/dev/shm/{filename}.png", "wb") as f:
+        f.write(data)
+        f.close()
 
 @dataclasses.dataclass
 class WrittenContent:
@@ -202,6 +211,7 @@ def create_script(
     intros: list[str],
     credits: list[str],
     outros: list[str],
+    page,
 ):
     # Pick a voice for the TTS
     voice = choose_random_voice()
@@ -235,31 +245,36 @@ Author: {content.author}"""
     response = chat.send_message(
         message=prompt,
     )
-    audio_file = generate_audio(tts_client, response.text, filename, voice)
+    script_text = response.text.strip()
+    audio_file = generate_audio(tts_client, script_text, filename, voice)
 
+    pub_date_str = content.pub_date.strftime("%d/%M/%Y %I:%M %p")
     display_text = f"""{content.title}
 by {content.author} @ {content.source}
+{pub_date_str}
 
 {content.url}
 
-{response.text}
+{script_text}
 """
 
-    return Script(display_text=display_text, audio_file=audio_file)
+    screenshot_path = take_screenshot(page, content.url, filename)
+
+    return Script(display_text=display_text, audio_file=audio_file, image_file=screenshot_path)
 
 
 def research_loop(queue: Queue, after: datetime):
     logging.info("Reading prompts...")
-    with open("system_prompt.md") as f:
+    with open("./journalist/system_prompt.md") as f:
         system_prompt = f.read()
 
-    with open("intros.txt") as f:
+    with open("./journalist/intros.txt") as f:
         intros = f.read().splitlines()
 
-    with open("credits.txt") as f:
+    with open("./journalist/credits.txt") as f:
         credits = f.read().splitlines()
 
-    with open("outros.txt") as f:
+    with open("./journalist/outros.txt") as f:
         outros = f.read().splitlines()
 
     tts = texttospeech.TextToSpeechClient()
@@ -280,41 +295,38 @@ def research_loop(queue: Queue, after: datetime):
 
     count = 0
 
-    while True:
-        logging.info("Getting written_content after %s", after)
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
 
-        # Get all content from RSS feeds
-        new_content = read_content_from_rss(after=after)
+        while True:
+            logging.info("Getting written_content after %s", after)
 
-        # TODO: Ask Gemini to build context around the written_content
-        logging.info("%d new written content read!", len(new_content))
+            # Get all content from RSS feeds
+            new_content = read_content_from_rss(after=after)
 
-        if new_content:
-            # Set the next date to the most recent written_content
-            after = new_content[0].pub_date
+            # TODO: Ask Gemini to build context around the written_content
+            logging.info("%d new written content read!", len(new_content))
 
-            # Create scripts for the content
-            for content in new_content:
-                script = create_script(
-                    tts,
-                    chat,
-                    content,
-                    f"{count}_written_content",
-                    intros,
-                    credits,
-                    outros,
-                )
-                queue.put(script)
-                count += 1
+            if new_content:
+                # Set the next date to the most recent written_content
+                after = new_content[0].pub_date
 
-                # Take it slow
-                logging.info("Researcher is taking a break...")
-                time.sleep(60)
+                # Create scripts for the content
+                for content in new_content:
+                    script = create_script(
+                        tts,
+                        chat,
+                        content,
+                        f"{count}_written_content",
+                        intros,
+                        credits,
+                        outros,
+                        page
+                    )
+                    queue.put(script)
+                    count += 1
 
-
-def spawn_written_content_researcher(queue: Queue, after: datetime) -> threading.Thread:
-    logging.info("Spawning WrittenContent Researcher")
-    thread = threading.Thread(target=research_loop, args=(queue, after))
-    thread.daemon = True
-    thread.start()
-    return thread
+            # Take it slow
+            logging.info("Researcher is taking a 5 minute break...")
+            time.sleep(60 * 5)

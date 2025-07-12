@@ -8,9 +8,12 @@ from zoneinfo import ZoneInfo
 
 from dateutil.parser import parse as parse_date
 from flask import Flask
+from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
 
 from factoid import spawn_factoid
-from written_content import spawn_written_content_researcher
+from journalist import spawn_journalist
+from trendy import spawn_trendy
 
 queue: Queue = Queue()
 app = Flask(__name__)
@@ -18,8 +21,9 @@ app = Flask(__name__)
 
 @app.route("/next")
 def get_next_script():
-    logging.info("Waiting for next script...")
+    logging.info("Narrator is waiting for next script...")
     next_script = queue.get()
+    msg = MIMEMultipart("mixed")
     json_dict = dataclasses.asdict(next_script)
     return json.dumps(json_dict)
 
@@ -49,8 +53,10 @@ def main():
     if args.after:
         after = parse_date(args.after)
 
-    spawn_written_content_researcher(queue, after)
-    spawn_factoid(queue)
+    spawn_journalist(queue, after)
+    # spawn_factoid(queue)
+
+    # spawn_trendy(queue)
 
     # Serve HTTP server
     app.run(host="127.0.0.1", port=args.port)

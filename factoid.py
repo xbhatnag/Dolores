@@ -1,15 +1,8 @@
-import dataclasses
 import logging
-import random
 import threading
 import time
-from datetime import datetime, timezone
 from queue import Queue
-from typing import List
 
-import bs4
-import feedparser
-from dateutil.parser import parse as parse_date
 from google import genai
 from google.cloud import texttospeech
 
@@ -32,8 +25,6 @@ def create_script(
         message=prompt,
     )
     audio_file = generate_audio(tts_client, response.text, filename, voice)
-
-    print(response.text)
 
     return Script(display_text=response.text, audio_file=audio_file)
 
@@ -69,8 +60,8 @@ You may start with an intro like: "Did you know ... " or "Here's something you m
         count += 1
 
         # Wait until we're running out of content
-        logging.info("Factoid is taking a break...")
-        time.sleep(120)
+        logging.info("Factoid is taking a 30 minute break...")
+        time.sleep(60 * 30)
 
 
 def spawn_factoid(queue: Queue) -> threading.Thread:
