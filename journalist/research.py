@@ -20,10 +20,34 @@ from playwright.sync_api import sync_playwright
 from playwright.sync_api import ViewportSize
 from playwright.sync_api import Page
 
+import qrcode
+import io
+
 
 def take_screenshot(page: Page, url: str, filename: str) -> bytes:
-    page.goto(url)
-    return page.screenshot()
+    while True:
+        try:
+            page.goto(url)
+            return page.screenshot()
+        except:
+            # Give it another go in a few seconds
+            time.sleep(10)
+            pass
+
+
+def create_qr_code(url: str) -> bytes:
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=0,
+    )
+    qr.add_data(url)
+    qr.make(fit=True)
+    image = qr.make_image(fill_color="black", back_color="white")
+    byte_stream = io.BytesIO()
+    image.save(byte_stream, format="PNG")
+    return byte_stream.getvalue()
 
 
 @dataclasses.dataclass
@@ -247,16 +271,31 @@ Author: {content.author}"""
     response = chat.send_message(
         message=prompt,
     )
-    script_text = response.text.strip()
-    audio_data = generate_audio(tts_client, script_text, filename, voice)
 
-    image_data = take_screenshot(page, content.url, filename)
+    # Now generate audio for it
+    script_text: str = response.text.strip().replace("\n", " ")
+
+    # Punctuate the end so the audio doesn't sound weird.
+    if not script_text.endswith("."):
+        script_text += "."
+
+    audio = generate_audio(tts_client, script_text, filename, voice)
+
+    # Get a screenshot of the page
+    hero = take_screenshot(page, content.url, filename)
+
+    # Generate a QRCode for the URL
+    qr_code = create_qr_code(content.url)
 
     return Script(
-        title=content.title,
-        audio_text=script_text,
-        image_data=image_data,
-        audio_data=audio_data,
+        title=f"[{content.source}] {content.title}",
+        description=script_text,
+        hero=hero,
+        audio=audio,
+        qr_code=qr_code,
+        footer_1=f"Written by {content.author}",
+        footer_2=content.pub_date.strftime("%a, %d %b %Y, %I:%M:%S %p"),
+        narrator=voice
     )
 
 

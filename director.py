@@ -22,13 +22,18 @@ app = Flask(__name__)
 def get_next_script():
     logging.info("Narrator is waiting for next script...")
     script: Script = queue.get()
-    b64_audio_data = base64.b64encode(script.audio_data).decode("ascii")
-    b64_image_data = base64.b64encode(script.image_data).decode("ascii")
+    b64_audio = base64.b64encode(script.audio).decode("ascii")
+    b64_hero = base64.b64encode(script.hero).decode("ascii")
+    b64_qr_code = base64.b64encode(script.qr_code).decode("ascii")
     json_data = {
         "title": script.title,
-        "audio_text": script.audio_text,
-        "audio_data": b64_audio_data,
-        "image_data": b64_image_data,
+        "description": script.description,
+        "audio": b64_audio,
+        "hero": b64_hero,
+        "qr_code": b64_qr_code,
+        "footer_1": script.footer_1,
+        "footer_2": script.footer_2,
+        "narrator": script.narrator
     }
     return json_data
 
@@ -54,7 +59,7 @@ def main():
     logging.getLogger().setLevel(logging.INFO)
     logging.info("Welcome to Jockey! I'm the Director.")
 
-    after = now() - timedelta(hours=4)
+    after = now() - timedelta(days=1)
     if args.after:
         after = parse_date(args.after)
 

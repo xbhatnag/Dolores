@@ -28,64 +28,107 @@ body {
     align-items: center;
 }
 
-.row {
-    display: flex;
-    flex-direction: row;
-    width: 100%;
-    height: 100%
+marquee {
+    font-size: medium;
 }
 
-.column {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-}
-
-#news-window {
-    width: 75vw;
-    height: 100%;
-    margin: 10px
-}
-
-#narrator-window {
-    width: 22vw;
-    height: fit-content;
-    margin: 10px
-}
-
-#narrator-img {
-    width: 100%
-}
-
-#script-img {
-    width: 100%;
+#logo {
+    height: 18px
 }
 
 #start-button {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
     background-color: #d3d0c9;
     border: outset 2px;
     border-color: #e9e7e1 #a19f9a #a19f9a #e9e7e1;
     margin: 2px;
     padding: 5px;
     height: fit-content;
-    width: fit-content
+    width: fit-content;
+    cursor: pointer;
+    font-size: medium;
 }
 
-#icon-tray {
+#start-button:active {
+    border: inset 2px;
+    border-color: #a19f9a #e9e7e1 #e9e7e1 #a19f9a;
+}
+
+#clock {
     background-color: #d3d0c9;
     border: inset 2px;
     border-color: #a19f9a;
     margin: 2px;
     padding: 5px;
     height: fit-content;
-    width: fit-content
+    width: fit-content;
+    white-space: nowrap;
+    font-size: medium;
 }
 
-#display-text {
-    font-size: large;
+
+
+
+
+#article-window {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    width: 1500px;
+    height: fit-content;
+}
+
+#camera-window {
+    position: absolute;
+    top: 90px;
+    right: 20px;
+    width: 350px;
+    height: fit-content;
+}
+
+#qr-code-window {
+    position: absolute;
+    top: 500px;
+    right: 20px;
+    width: 350px;
+    height: fit-content;
+}
+
+.title-bar {
+    height: 25px;
+    font-size: 17px;
+}
+
+#loading {
+    width: 100%;
+    display: none;
+}
+
+#qr-code {
     width: 100%;
 }
 
-marquee {
+#narrator {
+    width: 100%
+}
+
+#hero {
+    width: 100%;
+}
+
+#description {
+    font-size: large;
+    width: 100%;
+    height: auto;
+    padding: 10px;
+}
+
+#footer-1 {
+    font-size: medium;
+}
+
+#footer-2 {
     font-size: medium;
 }

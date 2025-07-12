@@ -4,6 +4,10 @@ import dataclasses
 @dataclasses.dataclass
 class Script:
     title: str
-    audio_text: str
-    audio_data: bytes
-    image_data: bytes
+    description: str
+    audio: bytes
+    hero: bytes
+    qr_code: bytes
+    footer_1: str
+    footer_2: str
+    narrator: str

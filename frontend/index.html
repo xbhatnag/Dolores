@@ -10,41 +10,51 @@
 </head>
 
 <body>
-  <div class="row">
-    <div class="window" id="news-window">
-      <div class="title-bar">
-        <div class="title-bar-text" id="script-title">
-          Article Title
-        </div>
-        <div class="title-bar-controls">
-          <button aria-label="Help"></button>
-          <button aria-label="Close"></button>
-        </div>
+  <div class="window" id="article-window">
+    <div class="title-bar">
+      <div class="title-bar-text" id="title">
+        Article Title
       </div>
-      <div class="window-body">
-        <img src="test.png" id="script-img">
-        <textarea id="display-text">A new volume controller is all the rage!</textarea>
-      </div>
-      <div class="status-bar">
-        <div class="status-bar-field">Written by Xyan Bhatnagar</div>
-        <div class="status-bar-field">22 August 2020, 8:30PM</div>
+      <div class="title-bar-controls">
+        <button aria-label="Help"></button>
+        <button aria-label="Close"></button>
       </div>
     </div>
-    <div class="window" id="narrator-window">
-      <div class="title-bar">
-        <div class="title-bar-text">
-          Camera
-        </div>
+    <div class="window-body">
+      <img id="hero">
+      <textarea id="description"></textarea>
+    </div>
+    <div class="status-bar">
+      <div class="status-bar-field" id="footer-1"></div>
+      <div class="status-bar-field" id="footer-2"></div>
+    </div>
+  </div>
+  <div class="window" id="camera-window">
+    <div class="title-bar">
+      <div class="title-bar-text">
+        Camera
       </div>
-      <div class="window-body">
-        <img src="n1.png" id="narrator-img"></img>
+    </div>
+    <div class="window-body">
+      <img id="narrator"></img>
+      <progress id="loading"></progress>
+    </div>
+  </div>
+  <div class="window" id="qr-code-window">
+    <div class="title-bar">
+      <div class="title-bar-text">
+        QR Code
       </div>
+    </div>
+    <div class="window-body">
+      <img id="qr-code"></img>
     </div>
   </div>
   <div id="start-menu">
-    <div id="start-button">Jockey</div>
-    <marquee>BREAKING NEWS: A dog is loose in the park!</marquee>
-    <div id="icon-tray">7:20&nbsp;AM</div>
+    <div id="start-button"><img src="logo.png" id="logo">Jockey
+    </div>
+    <marquee id="scroller"></marquee>
+    <div id="clock"></div>
   </div>
 </body>
 
