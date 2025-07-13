@@ -1,27 +1,24 @@
 import dataclasses
+import io
 import logging
 import random
-import threading
 import time
 from datetime import datetime, timezone
 from queue import Queue
 from typing import List
 
 import bs4
-import feedparser
+import qrcode
+import qrcode.constants
+import requests
+import xmltodict
 from dateutil.parser import parse as parse_date
 from google import genai
 from google.cloud import texttospeech
+from playwright.sync_api import Page, ViewportSize, sync_playwright
 
 from script import Script
 from tts import choose_random_voice, generate_audio
-
-from playwright.sync_api import sync_playwright
-from playwright.sync_api import ViewportSize
-from playwright.sync_api import Page
-
-import qrcode
-import io
 
 
 def take_screenshot(page: Page, url: str, filename: str) -> bytes:
@@ -55,7 +52,7 @@ class WrittenContent:
     source: str
     title: str
     type: str
-    author: str
+    authors: List[str]
     tags: List[str]
     data: str
     url: str
@@ -85,121 +82,138 @@ def normalize_date(date: str) -> str:
 
 
 def randomize_written_content_type_str() -> str:
-    random.choice(["article", "piece", "story"])
+    return random.choice(["article", "piece", "story"])
 
+
+def get_authors(entry: dict) -> List[str]:
+    if isinstance(entry["author"], list):
+        return [author["name"] for author in entry["author"]]
+    else:
+        return [entry["author"]["name"]]
+
+def get_xml(url: str) -> dict:
+    response = requests.get(url)
+
+    if response.status_code != 200:
+        raise AssertionError("Failed to get RSS feed: %d", response.status_code)
+
+    rss = xmltodict.parse(response.text)
+    return rss
 
 def read_the_verge_long_form() -> List[WrittenContent]:
-    feed = feedparser.parse("https://www.theverge.com/rss/index.xml")
+    xml = get_xml("https://www.theverge.com/rss/index.xml")
+    entries = xml["feed"]["entry"]
     written_content = []
-    for entry in feed.entries:
+
+    for entry in entries:
         written_content.append(
             WrittenContent(
                 source="The Verge",
-                title=strip_html(entry.title),
-                tags=[t.get("term") for t in entry.tags],
+                title=strip_html(entry["title"]["#text"]),
+                tags=[category["@term"] for category in entry["category"]],
                 type=randomize_written_content_type_str(),
-                author=entry.author,
-                data=strip_html(entry.content[0].value),
-                url=entry.link,
-                _pub_date=normalize_date(entry.published),
+                authors=get_authors(entry),
+                data=strip_html(entry["content"]["#text"]),
+                url=entry["link"]["@href"],
+                _pub_date=normalize_date(entry["published"]),
             )
         )
+
     return written_content
 
 
 def read_the_verge_quick_posts() -> List[WrittenContent]:
-    feed = feedparser.parse("https://www.theverge.com/rss/quickposts")
+    xml = get_xml("https://www.theverge.com/rss/quickposts")
+    entries = xml["feed"]["entry"]
     written_content = []
-    for entry in feed.entries:
+    for entry in entries:
         written_content.append(
             WrittenContent(
                 source="The Verge",
-                title=strip_html(entry.title),
-                tags=[t.get("term") for t in entry.tags],
-                type="short post",
-                author=entry.author,
-                data=strip_html(entry.content[0].value),
-                url=entry.link,
-                _pub_date=normalize_date(entry.published),
+                title=strip_html(entry["title"]["#text"]),
+                tags=[category["@term"] for category in entry["category"]],
+                type=randomize_written_content_type_str(),
+                authors=get_authors(entry),
+                data=strip_html(entry["content"]["#text"]),
+                url=entry["link"]["@href"],
+                _pub_date=normalize_date(entry["published"]),
             )
         )
     return written_content
 
 
 def read_ars_technica() -> List[WrittenContent]:
-    feed = feedparser.parse("https://feeds.arstechnica.com/arstechnica/index")
+    xml = get_xml("https://feeds.arstechnica.com/arstechnica/index")
+    entries = xml['rss']['channel']['item']
     written_content = []
-    for entry in feed.entries:
-        data = (
-            strip_html(entry.content[0].value)
-            .removesuffix("Comments")
-            .strip()
-            .removesuffix("Read full article")
-            .strip()
-        )
+    for entry in entries:
         written_content.append(
             WrittenContent(
                 source="Ars Technica",
-                title=entry.title,
+                title=entry["title"],
                 type=randomize_written_content_type_str(),
-                tags=[t.get("term") for t in entry.tags],
-                author=entry.author,
-                data=data,
-                url=entry.link.strip(),
-                _pub_date=normalize_date(entry.published),
+                tags=entry["category"],
+                authors=[entry["dc:creator"]],
+                data=strip_html(entry['content:encoded'])
+                    .removesuffix("Comments")
+                    .strip()
+                    .removesuffix("Read full article")
+                    .strip(),
+                url=entry["link"],
+                _pub_date=normalize_date(entry["pubDate"]),
             )
         )
     return written_content
 
 
 def read_hackaday() -> List[WrittenContent]:
-    feed = feedparser.parse("https://hackaday.com/blog/feed/")
+    xml = get_xml("https://hackaday.com/blog/feed/")
+    entries = xml['rss']['channel']['item']
     written_content = []
-    for entry in feed.entries:
+    for entry in entries:
         written_content.append(
             WrittenContent(
-                source="Hack A Day",
-                title=entry.title,
+                source="Hackaday",
+                title=entry["title"],
                 type=randomize_written_content_type_str(),
-                tags=[t.get("term") for t in entry.tags],
-                author=entry.author,
-                data=strip_html(entry.content[0].value),
-                url=entry.link.strip(),
-                _pub_date=normalize_date(entry.published),
+                tags=entry["category"],
+                authors=[entry["dc:creator"]],
+                data=strip_html(entry['content:encoded']),
+                url=entry["link"],
+                _pub_date=normalize_date(entry["pubDate"]),
             )
         )
     return written_content
 
 
 def read_daring_fireball() -> List[WrittenContent]:
-    feed = feedparser.parse("https://daringfireball.net/feeds/main")
+    xml = get_xml("https://daringfireball.net/feeds/main")
+    entries = xml["feed"]["entry"]
     written_content = []
-    for entry in feed.entries:
+    for entry in entries:
         # We want Gruber's pieces, not others'
-        if "sponsors" in entry.id or "linked" in entry.id:
+        if "sponsors" in entry["id"] or "linked" in entry["id"]:
             continue
 
-        title = getattr(entry, "title", "")
-
-        # What in god's name is this?
-        if not title:
-            continue
-
-        # He does this sometimes
-        title = title.removeprefix("★ ")
+        url= None
+        for link in entry["link"]:
+            if link["@rel"] == "shorturl":
+                url = link["@href"]
+        assert url
 
         written_content.append(
             WrittenContent(
                 source="Daring Fireball",
-                title=title,
-                type=randomize_written_content_type_str(),
+                title=strip_html(entry["title"]),
                 tags=[],
-                author=entry.author,
-                data=strip_html(entry.content[0].value),
-                url=entry.link.strip(),
-                _pub_date=normalize_date(entry.published),
+                type=randomize_written_content_type_str(),
+                authors=get_authors(entry),
+                data=strip_html(entry["content"]["#text"]),
+                url=url,
+                _pub_date=normalize_date(entry["published"]),
             )
         )
+    
     return written_content
 
 
@@ -261,7 +275,7 @@ def create_script(
     prompt += f"""Source: {content.source}
 Title: {content.title}
 Content Type: {content.type}
-Author: {content.author}"""
+Authors: {",".join(content.authors)}"""
 
     if content.tags:
         prompt += f"\nTags: {','.join(content.tags)}"
@@ -293,9 +307,9 @@ Author: {content.author}"""
         hero=hero,
         audio=audio,
         qr_code=qr_code,
-        footer_1=f"Written by {content.author}",
+        footer_1=f"Written by {", ".join(content.authors)}",
         footer_2=content.pub_date.strftime("%a, %d %b %Y, %I:%M:%S %p"),
-        narrator=voice
+        narrator=voice,
     )
 
 

@@ -1,5 +1,5 @@
-backend/__pycache__
-backend/.venv/**
 .DS_Store
-frontend/node_modules/**
-frontend/package-lock.json
+**/__pycache__
+**/.venv
+**/node_modules
+**/package-lock.json
