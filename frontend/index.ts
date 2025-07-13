@@ -1,9 +1,9 @@
 interface Script {
     title: string,
-    description: string,
+    description: string | null,
     audio: string,
-    hero: string,
-    qr_code: string,
+    hero: string | null,
+    qr_code: string | null,
     footer_1: string,
     footer_2: string,
     narrator: string,
@@ -11,7 +11,7 @@ interface Script {
 
 interface ScriptHTML {
     article_window: HTMLElement,
-    camera_window: HTMLElement,
+    narrator_window: HTMLElement,
     qr_code_window: HTMLElement,
     loading: HTMLElement,
     title: HTMLElement;
@@ -28,7 +28,7 @@ window.onload = () => {
 
     const script_html: ScriptHTML = {
         article_window: document.getElementById("article-window")!,
-        camera_window: document.getElementById("camera-window")!,
+        narrator_window: document.getElementById("narrator-window")!,
         qr_code_window: document.getElementById("qr-code-window")!,
         loading: document.getElementById("loading")!,
         title: document.getElementById("title")!,
@@ -45,7 +45,7 @@ window.onload = () => {
     // Set the scroller text
     document.getElementById("scroller")!.textContent = [
         "Jockey is an AI radio that promotes interesting tech articles on the internet. It as an experimental side project, created for fun and not for monetization.",
-        "The RSS feeds of each publication are used to generate Jockey's audio summaries. Please support these publications so they can continue to produce great work! ❤️",
+        "Jockey uses RSS feeds of news publications to generate audio summaries. Please support these publications so they can continue to produce great work! ❤️",
         "Generative AI ✨ can make mistakes, so double check it.",
         "Jockey was created by Xyan Bhatnagar (xyan.pro)"
     ].join("\u00A0".repeat(100));
@@ -146,36 +146,60 @@ async function narrator_loop(narrator_html: HTMLImageElement, narrator: string, 
     }
 }
 
+function sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function get_next_script(url: string): Promise<Script> {
+    while (true) {
+        try {
+            const response = await fetch(url);
+            return response.json();
+        } catch (e) {
+            console.error(e);
+            await sleep(10000);
+        }
+    }
+}
+
 async function play_next(url: string, script_html: ScriptHTML) {
     console.log("Retrieving next script...")
 
     // Show the progress bar
     script_html.loading.style.display = "block";
 
-    // Wait for 5 seconds before starting with the next article.
-    await new Promise(resolve => setTimeout(resolve, 10000));
-
-    // Get the next script
-    const response = await fetch(url);
-    const script: Script = await response.json();
+    const script = await get_next_script(url);
     console.log(script.title);
 
     // Hide the progress bar
     script_html.loading.style.display = "none";
 
     // Set the hero image
-    script_html.hero.src = `data:image/png;base64,${script.hero}`;
+    if (script.hero && script.hero.length != 0) {
+        script_html.hero.src = `data:image/png;base64,${script.hero}`;
+        script_html.hero.style.display = "block";
+    } else {
+        script_html.hero.style.display = "none";
+    }
 
     // Set the title
     script_html.title.textContent = script.title;
 
-    // Set the Audio Text and adjust the height
-    script_html.description.textContent = script.description;
-    script_html.description.style.height = 'auto';
-    script_html.description.style.height = script_html.description.scrollHeight + 'px';
+    // Set the description if one exists
+    if (script.description && script.description.length != 0) {
+        script_html.description.textContent = script.description;
+        script_html.description.style.display = 'block';
+    } else {
+        script_html.description.style.display = 'none';
+    }
 
     // Set the QR Code
-    script_html.qr_code.src = `data:image/png;base64,${script.qr_code}`;
+    if (script.qr_code && script.qr_code.length != 0) {
+        script_html.qr_code.src = `data:image/png;base64,${script.qr_code}`;
+        script_html.qr_code_window.style.display = "block";
+    } else {
+        script_html.qr_code_window.style.display = "none";
+    }
 
     // Set the footers
     script_html.footer_1.textContent = script.footer_1;

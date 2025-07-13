@@ -1,19 +1,41 @@
 import argparse
+import base64
+import io
 import json
 import logging
 from datetime import datetime, timedelta
 from queue import Queue
 from zoneinfo import ZoneInfo
 
+import qrcode
+import qrcode.constants
 from dateutil.parser import parse as parse_date
 from flask import Flask
+from google.cloud import texttospeech
 
 from factoid import spawn_factoid
+from xkcd import spawn_xkcd
 from journalist import spawn_journalist
 from script import Script
-from trendy import spawn_trendy
-import base64
+from tts import random_narrator, generate_audio
 
+
+def create_qr_code(data: str) -> bytes:
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=0,
+    )
+    qr.add_data(data)
+    qr.make(fit=True)
+    image = qr.make_image(fill_color="black", back_color="white")
+    byte_stream = io.BytesIO()
+    image.save(byte_stream, format="PNG")
+    return byte_stream.getvalue()
+
+
+tts = texttospeech.TextToSpeechClient()
 queue: Queue = Queue()
 app = Flask(__name__)
 
@@ -22,9 +44,21 @@ app = Flask(__name__)
 def get_next_script():
     logging.info("Narrator is waiting for next script...")
     script: Script = queue.get()
-    b64_audio = base64.b64encode(script.audio).decode("ascii")
+
+    assert script.title
+    assert script.audio
+
+    narrator = random_narrator()
+    audio_mp3 = generate_audio(tts, script.audio, narrator)
+    b64_audio = base64.b64encode(audio_mp3).decode("ascii")
+
     b64_hero = base64.b64encode(script.hero).decode("ascii")
-    b64_qr_code = base64.b64encode(script.qr_code).decode("ascii")
+
+    b64_qr_code = ""
+    if script.qr_code:
+        qr_code_image = create_qr_code(script.qr_code)
+        b64_qr_code = base64.b64encode(qr_code_image).decode("ascii")
+
     json_data = {
         "title": script.title,
         "description": script.description,
@@ -33,7 +67,7 @@ def get_next_script():
         "qr_code": b64_qr_code,
         "footer_1": script.footer_1,
         "footer_2": script.footer_2,
-        "narrator": script.narrator
+        "narrator": narrator,
     }
     return json_data
 
@@ -63,8 +97,9 @@ def main():
     if args.after:
         after = parse_date(args.after)
 
-    spawn_journalist(queue, after)
-    # spawn_factoid(queue)
+    # spawn_journalist(queue, after)
+    spawn_xkcd(queue)
+    spawn_factoid(queue)
 
     # spawn_trendy(queue)
 

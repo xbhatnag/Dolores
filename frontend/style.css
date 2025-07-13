@@ -69,18 +69,26 @@ marquee {
 }
 
 
+.window-body {
+    text-align: center
+}
 
-
-
-#article-window {
+#article-space {
     position: absolute;
-    top: 20px;
+    top: 0;
     left: 20px;
     width: 1500px;
+    height: 1030px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#article-window {
     height: fit-content;
 }
 
-#camera-window {
+#narrator-window {
     position: absolute;
     top: 90px;
     right: 20px;
@@ -94,6 +102,18 @@ marquee {
     right: 20px;
     width: 350px;
     height: fit-content;
+}
+
+#article-body {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+#narrator-body {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
 }
 
 .title-bar {
@@ -115,14 +135,16 @@ marquee {
 }
 
 #hero {
-    width: 100%;
+    max-height: 800px;
 }
 
 #description {
     font-size: large;
     width: 100%;
-    height: auto;
-    padding: 10px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    font-family: "Pixelated MS Sans Serif", Arial;
+    background-color: white;
 }
 
 #footer-1 {

@@ -1,9 +1,12 @@
+import logging
 import random
 
 from google.cloud import texttospeech
 
+from script import Script
 
-def choose_random_voice() -> str:
+
+def random_narrator() -> str:
     # These are the good voices from Chirp3
     return random.choice(
         [
@@ -17,8 +20,9 @@ def choose_random_voice() -> str:
 
 
 def generate_audio(
-    tts_client: texttospeech.TextToSpeechClient, text: str, filename: str, voice: str
+    tts_client: texttospeech.TextToSpeechClient, text: str, voice: str
 ) -> bytes:
+    logging.info("Generating audio from script...")
     synthesis_input = texttospeech.SynthesisInput(text=text)
     voice_params = texttospeech.VoiceSelectionParams(
         language_code="en-US", name=f"en-US-Chirp3-HD-{voice}"

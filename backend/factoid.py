@@ -7,26 +7,32 @@ from google import genai
 from google.cloud import texttospeech
 
 from script import Script
-from tts import choose_random_voice, generate_audio
 
 
 def create_script(
-    tts_client: texttospeech.TextToSpeechClient,
     chat: genai.chats.Chat,
-    filename: str,
 ):
-    # Pick a voice for the TTS
-    voice = choose_random_voice()
 
     # Ask Gemini to write the script
-    prompt = "Tell me another uncommon fun fact about technology!"
+    prompt = "Tell me another uncommon fun fact about consumer technology!"
 
-    response = chat.send_message(
-        message=prompt,
+    fact = (
+        chat.send_message(
+            message=prompt,
+        )
+        .text.strip()
+        .replace("\n", " ")
     )
-    audio_file = generate_audio(tts_client, response.text, filename, voice)
 
-    return Script(display_text=response.text, audio_file=audio_file)
+    return Script(
+        title="Fun Fact!",
+        description=fact,
+        audio=fact,
+        hero=bytes(),
+        qr_code="",
+        footer_1="",
+        footer_2="",
+    )
 
 
 def factoid_loop(queue: Queue):
@@ -54,14 +60,14 @@ You may start with an intro like: "Did you know ... " or "Here's something you m
     while True:
         logging.info("Getting new fun fact")
 
-        script = create_script(tts, chat, f"{count}_fun_fact")
+        script = create_script(chat)
         queue.put(script)
 
         count += 1
 
         # Wait until we're running out of content
         logging.info("Factoid is taking a 30 minute break...")
-        time.sleep(60 * 30)
+        time.sleep(60)
 
 
 def spawn_factoid(queue: Queue) -> threading.Thread:

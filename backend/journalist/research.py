@@ -8,20 +8,16 @@ from queue import Queue
 from typing import List
 
 import bs4
-import qrcode
-import qrcode.constants
 import requests
 import xmltodict
 from dateutil.parser import parse as parse_date
 from google import genai
-from google.cloud import texttospeech
 from playwright.sync_api import Page, ViewportSize, sync_playwright
 
 from script import Script
-from tts import choose_random_voice, generate_audio
 
 
-def take_screenshot(page: Page, url: str, filename: str) -> bytes:
+def take_screenshot(page: Page, url: str) -> bytes:
     while True:
         try:
             page.goto(url)
@@ -30,21 +26,6 @@ def take_screenshot(page: Page, url: str, filename: str) -> bytes:
             # Give it another go in a few seconds
             time.sleep(10)
             pass
-
-
-def create_qr_code(url: str) -> bytes:
-    qr = qrcode.QRCode(
-        version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_L,
-        box_size=10,
-        border=0,
-    )
-    qr.add_data(url)
-    qr.make(fit=True)
-    image = qr.make_image(fill_color="black", back_color="white")
-    byte_stream = io.BytesIO()
-    image.save(byte_stream, format="PNG")
-    return byte_stream.getvalue()
 
 
 @dataclasses.dataclass
@@ -91,14 +72,13 @@ def get_authors(entry: dict) -> List[str]:
     else:
         return [entry["author"]["name"]]
 
+
 def get_xml(url: str) -> dict:
     response = requests.get(url)
-
-    if response.status_code != 200:
-        raise AssertionError("Failed to get RSS feed: %d", response.status_code)
-
+    response.raise_for_status()
     rss = xmltodict.parse(response.text)
     return rss
+
 
 def read_the_verge_long_form() -> List[WrittenContent]:
     xml = get_xml("https://www.theverge.com/rss/index.xml")
@@ -144,7 +124,7 @@ def read_the_verge_quick_posts() -> List[WrittenContent]:
 
 def read_ars_technica() -> List[WrittenContent]:
     xml = get_xml("https://feeds.arstechnica.com/arstechnica/index")
-    entries = xml['rss']['channel']['item']
+    entries = xml["rss"]["channel"]["item"]
     written_content = []
     for entry in entries:
         written_content.append(
@@ -154,11 +134,11 @@ def read_ars_technica() -> List[WrittenContent]:
                 type=randomize_written_content_type_str(),
                 tags=entry["category"],
                 authors=[entry["dc:creator"]],
-                data=strip_html(entry['content:encoded'])
-                    .removesuffix("Comments")
-                    .strip()
-                    .removesuffix("Read full article")
-                    .strip(),
+                data=strip_html(entry["content:encoded"])
+                .removesuffix("Comments")
+                .strip()
+                .removesuffix("Read full article")
+                .strip(),
                 url=entry["link"],
                 _pub_date=normalize_date(entry["pubDate"]),
             )
@@ -168,7 +148,7 @@ def read_ars_technica() -> List[WrittenContent]:
 
 def read_hackaday() -> List[WrittenContent]:
     xml = get_xml("https://hackaday.com/blog/feed/")
-    entries = xml['rss']['channel']['item']
+    entries = xml["rss"]["channel"]["item"]
     written_content = []
     for entry in entries:
         written_content.append(
@@ -178,7 +158,7 @@ def read_hackaday() -> List[WrittenContent]:
                 type=randomize_written_content_type_str(),
                 tags=entry["category"],
                 authors=[entry["dc:creator"]],
-                data=strip_html(entry['content:encoded']),
+                data=strip_html(entry["content:encoded"]),
                 url=entry["link"],
                 _pub_date=normalize_date(entry["pubDate"]),
             )
@@ -195,7 +175,7 @@ def read_daring_fireball() -> List[WrittenContent]:
         if "sponsors" in entry["id"] or "linked" in entry["id"]:
             continue
 
-        url= None
+        url = None
         for link in entry["link"]:
             if link["@rel"] == "shorturl":
                 url = link["@href"]
@@ -213,7 +193,7 @@ def read_daring_fireball() -> List[WrittenContent]:
                 _pub_date=normalize_date(entry["published"]),
             )
         )
-    
+
     return written_content
 
 
@@ -242,19 +222,14 @@ def read_content_from_rss(after: datetime) -> List[WrittenContent]:
 
 
 def create_script(
-    tts_client: texttospeech.TextToSpeechClient,
     chat: genai.chats.Chat,
     content: WrittenContent,
-    filename: str,
     intros: list[str],
     credits: list[str],
     outros: list[str],
     page: Page,
 ):
     logging.info("Creating new script!")
-
-    # Pick a voice for the TTS
-    voice = choose_random_voice()
 
     # Determine if we want an intro and an outro
     want_intro = random.random() < 0.4
@@ -293,23 +268,17 @@ Authors: {",".join(content.authors)}"""
     if not script_text.endswith("."):
         script_text += "."
 
-    audio = generate_audio(tts_client, script_text, filename, voice)
-
     # Get a screenshot of the page
-    hero = take_screenshot(page, content.url, filename)
-
-    # Generate a QRCode for the URL
-    qr_code = create_qr_code(content.url)
+    hero = take_screenshot(page, content.url)
 
     return Script(
         title=f"[{content.source}] {content.title}",
         description=script_text,
+        audio=script_text,
         hero=hero,
-        audio=audio,
-        qr_code=qr_code,
+        qr_code=content.url,
         footer_1=f"Written by {", ".join(content.authors)}",
         footer_2=content.pub_date.strftime("%a, %d %b %Y, %I:%M:%S %p"),
-        narrator=voice,
     )
 
 
@@ -327,7 +296,6 @@ def research_loop(queue: Queue, after: datetime):
     with open("./journalist/outros.txt") as f:
         outros = f.read().splitlines()
 
-    tts = texttospeech.TextToSpeechClient()
     tools = []
     # tools.append(types.Tool(url_context=types.UrlContext))
     # tools.append(types.Tool(google_search=types.GoogleSearch))
@@ -365,10 +333,8 @@ def research_loop(queue: Queue, after: datetime):
                 # Create scripts for the content
                 for content in new_content:
                     script = create_script(
-                        tts,
                         chat,
                         content,
-                        f"{count}_written_content",
                         intros,
                         credits,
                         outros,
@@ -376,6 +342,9 @@ def research_loop(queue: Queue, after: datetime):
                     )
                     queue.put(script)
                     count += 1
+
+                    # Take 60 second breaks between articles
+                    time.sleep(60)
 
             # Take it slow
             logging.info("Researcher is taking a 5 minute break...")
