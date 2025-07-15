@@ -72,7 +72,7 @@ def get_next_script():
     return json_data
 
 
-def now() -> datetime:
+def now() -> datetime: 
     # We know we are in west coast.
     return datetime.now(tz=ZoneInfo("America/Los_Angeles"))
 
@@ -97,7 +97,7 @@ def main():
     if args.after:
         after = parse_date(args.after)
 
-    # spawn_journalist(queue, after)
+    spawn_journalist(queue, after)
     spawn_xkcd(queue)
     spawn_factoid(queue)
 

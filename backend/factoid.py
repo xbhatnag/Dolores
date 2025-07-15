@@ -67,7 +67,7 @@ You may start with an intro like: "Did you know ... " or "Here's something you m
 
         # Wait until we're running out of content
         logging.info("Factoid is taking a 30 minute break...")
-        time.sleep(60)
+        time.sleep(30 * 60)
 
 
 def spawn_factoid(queue: Queue) -> threading.Thread:

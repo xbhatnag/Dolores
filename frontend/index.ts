@@ -154,9 +154,13 @@ async function get_next_script(url: string): Promise<Script> {
     while (true) {
         try {
             const response = await fetch(url);
-            return response.json();
+            if (response.status != 200) {
+                console.error("Error from /next API", response);
+                continue;
+            }
+            return await response.json();
         } catch (e) {
-            console.error(e);
+            console.error("Error from /next API", e);
             await sleep(10000);
         }
     }
@@ -214,7 +218,9 @@ async function play_next(url: string, script_html: ScriptHTML) {
         // Stop the old narrator loop
         controller.abort();
 
-        // Start a new playback
-        play_next(url, script_html);
+        // Play the next script after 10 seconds
+        setTimeout(() => {
+            play_next(url, script_html);
+        }, 10000);
     });
 }

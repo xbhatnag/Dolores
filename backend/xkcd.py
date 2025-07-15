@@ -66,8 +66,8 @@ def xkcd_loop(queue: Queue):
         count += 1
 
         # Wait until we're running out of content
-        logging.info("XKCD is taking a 5 minute break...")
-        time.sleep(60)
+        logging.info("XKCD is taking a 30 minute break...")
+        time.sleep(60 * 30)
 
 
 def spawn_xkcd(queue: Queue) -> threading.Thread:
