@@ -1,4 +1,0 @@
-[author] from [source] has written a [article length] [content type] about
-[source] published a [length] [content type] talking about
-A new [content type] published to [source] by [author] says that
-[author] wrote a [length] [content type] about
