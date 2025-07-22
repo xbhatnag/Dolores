@@ -1,6 +1,6 @@
 'use client';
-import { FaExternalLinkAlt } from "react-icons/fa";
 import React, { useState, useEffect } from 'react';
+import { Tree, TreeItem, TreeItemContent, Selection, } from 'react-aria-components';
 
 interface NewsStory {
   uuid: string,
@@ -8,6 +8,29 @@ interface NewsStory {
   summary: string,
   feelings: string,
   url: string
+}
+
+interface TreeNode {
+  subcategories: Map<string, TreeNode>,
+  stories: Array<NewsStory>
+}
+
+function convertToTreeNode(jsonObject: any): TreeNode {
+  const node: TreeNode = {
+    subcategories: new Map<string, TreeNode>(),
+    stories: jsonObject.stories || [], // Ensure stories is an array
+  };
+
+  // Convert subcategories object to Map recursively
+  if (jsonObject.subcategories && typeof jsonObject.subcategories === 'object') {
+    for (const key in jsonObject.subcategories) {
+      if (Object.prototype.hasOwnProperty.call(jsonObject.subcategories, key)) {
+        node.subcategories.set(key, convertToTreeNode(jsonObject.subcategories[key]));
+      }
+    }
+  }
+
+  return node;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -32,108 +55,61 @@ async function fetch_retry(url: string) {
 
 const App = () => {
   // State to hold the news events, initially an empty array
-  const [serious, setSerious] = useState<Array<NewsStory>>([]);
-  const [light, setLight] = useState<Array<NewsStory>>([]);
-  const [anxiety, setAnxiety] = useState<Array<NewsStory>>([]);
-  // State to manage loading status
-  const [isLoading, setIsLoading] = useState(true);
+  const [root, setRoot] = useState<TreeNode | null>(null);
   // State to manage potential errors
   const [error, setError] = useState(null);
   const [isRunning, setRunning] = useState(false);
   const [category, setCategory] = useState("Light");
-  const [selected, setSelected] = useState("");
+  let [selectedKeys, setSelectedKeys] =
+    React.useState<Selection>(new Set());
+  const [selectedStory, setSelectedStory] = useState("");
 
   // useEffect hook to perform data fetching when the component mounts
   useEffect(() => {
-    const putNews = async (story: NewsStory) => {
-      console.log(`${story.conclusion} [${story.feelings}]`);
-      if (story.feelings == "Serious") {
-        setSerious(prevSerious => [story, ...prevSerious])
-      } else if (story.feelings == "Light") {
-        setLight(prevLight => [story, ...prevLight])
-      } else if (story.feelings == "Anxiety") {
-        setAnxiety(prevAnxiety => [story, ...prevAnxiety])
-      }
-      setIsLoading(false); // Set loading to false
-    };
+    const url = "http://10.0.0.110:7000";
 
-    const getNextNews = async () => {
+    const waitForTreeUpdate = async () => {
       if (!isRunning) {
         return;
       }
 
       try {
-        console.log("Fetching next story...");
-        const story: NewsStory = await fetch_retry("http://localhost:8080/next");
-        console.log(`${story.conclusion} [${story.feelings}]`);
-
-        putNews(story);
-
-        // Try again
-        setTimeout(getNextNews, 1000);
-      } catch (err) {
+        console.log("Waiting for tree updates...");
+        const json_obj = await fetch_retry(url + "/next");
+        const new_root = convertToTreeNode(json_obj)
+        console.log(new_root);
+        setRoot(new_root);
+        setTimeout(waitForTreeUpdate, 1000);
+      } catch (err: any) {
         setError(err.message); // Set error message
-        setIsLoading(false); // Set loading to false
       }
     };
 
-    const getAllNews = async () => {
+    const getTree = async () => {
       if (!isRunning) {
         return;
       }
 
       try {
-        console.log("Fetching all existing stories...");
-        const stories: Array<NewsStory> = await fetch_retry("http://localhost:8080/all");
-
-        // Load all existing stories
-        for (const story of stories) {
-          putNews(story);
-        }
-
-        getNextNews();
-      } catch (err) {
+        console.log("Fetching tree...");
+        const json_obj = await fetch_retry(url + "/tree");
+        const new_root = convertToTreeNode(json_obj)
+        console.log(new_root);
+        setRoot(new_root);
+        waitForTreeUpdate();
+      } catch (err: any) {
         setError(err.message); // Set error message
-        setIsLoading(false); // Set loading to false
       }
     };
 
     if (isRunning) {
-      getAllNews();
+      getTree();
     }
-  }, [isRunning]); // Empty dependency array means this effect runs once after the initial render
+  }, [isRunning]);
 
   const toggleRunning = () => {
     console.log(`Flipping state to ${!isRunning}`)
     setRunning(!isRunning);
-  }
-
-  const tabs = () => {
-    var serious_color = "bg-gray-100 hover:bg-gray-200"
-    var light_color = "bg-gray-100 hover:bg-gray-200"
-    var anxiety_color = "bg-gray-100 hover:bg-gray-200"
-
-    if (category == "Serious") {
-      serious_color = "bg-gray-800"
-    } else if (category == "Light") {
-      light_color = "bg-gray-800"
-    } else if (category == "Anxiety") {
-      anxiety_color = "bg-gray-800"
-    }
-
-    return (
-      <div className="flex gap-5">
-        <button className={`text-4xl ${serious_color} tracking-tight rounded-full p-2 h-15 w-15`} onClick={() => setCategory("Serious")}>
-          😐
-        </button>
-        <button className={`text-4xl ${light_color} tracking-tight rounded-full p-2 h-15 w-15`} onClick={() => setCategory("Light")}>
-          😄
-        </button>
-        <button className={`text-4xl ${anxiety_color} tracking-tight rounded-full p-2 h-15 w-15`} onClick={() => setCategory("Anxiety")}>
-          😥
-        </button>
-      </div>
-    )
   }
 
   const getFavicon = (url: string) => {
@@ -143,25 +119,25 @@ const App = () => {
       return <img src={favicon} className="h-6" />;
     } catch (error) {
       console.error("Invalid URL:", error);
-      return <FaExternalLinkAlt className="text-gray-800" />; // Handle bad URLs
+      return <div></div>; // Handle bad URLs
     }
   }
 
-  const storiesList = () => {
-    var stories = null
-    if (category == "Serious") {
-      stories = serious
-    } else if (category == "Light") {
-      stories = light
-    } else if (category == "Anxiety") {
-      stories = anxiety
-    } else {
-      throw `Unexpected category: ${category}`;
+  const collectAllStories = (node: TreeNode) => {
+    var stories = node.stories
+    for (const [_, category] of node.subcategories) {
+      stories.push(...collectAllStories(category));
     }
+    return stories
+  }
+
+  const storiesUi = (node: TreeNode) => {
+    const stories = collectAllStories(node)
+
     return (
       <div className="flex flex-col gap-5">
         {stories.map((story) => (
-          <div key={story.uuid} className="flex flex-col bg-gray-100 rounded-xl p-5" onClick={() => setSelected(story.uuid)}>
+          <div key={story.uuid} className="flex flex-col bg-gray-100 rounded-xl p-5" onClick={() => setSelectedStory(story.uuid)}>
             <div className="relative flex text-left flex items-center gap-2 mb-1">
               <div className="text-base sm:text-lg font-semibold text-gray-800 leading-tight grow">
                 {story.conclusion}
@@ -172,7 +148,7 @@ const App = () => {
             </div>
 
             {/* Conditional if selected */}
-            {story.uuid == selected &&
+            {story.uuid == selectedStory &&
               <div className="flex flex-col gap-2">
                 <a href={story.url}>{getFavicon(story.url)}</a>
                 <input className="bg-white rounded-l text-gray-800 mt-2 p-2" placeholder="Ask a question"></input>
@@ -184,32 +160,71 @@ const App = () => {
     );
   }
 
+  const createTreeItem = (name: string, node: TreeNode) => {
+    return (<TreeItem textValue={name} className="mt-1">
+      <TreeItemContent>
+        <div className="ps-[calc(calc(var(--tree-item-level)_-_1)_*_calc(var(--spacing)_*_6))]">
+          {"> " + name}
+        </div>
+      </TreeItemContent>
+      {
+        Array.from(node.subcategories).map(([key, value]) => (
+          createTreeItem(key, value) 
+        ))
+      }
+      {
+        node.stories.map((s) => (
+          <TreeItem textValue={s.conclusion} className="mt-1">
+            <TreeItemContent>
+              <div className="flex gap-2 ps-[calc(calc(var(--tree-item-level)_-_1)_*_calc(var(--spacing)_*_6))]">
+                <a href={s.url} target="_blank">{getFavicon(s.url)}</a>
+                {s.conclusion}
+              </div>
+            </TreeItemContent>
+          </TreeItem>
+        ))
+      }
+    </TreeItem>)
+  }
+
+  const createTree = (node: TreeNode) => {
+    return (<Tree className="text-gray-600 text-xl">
+      {
+        Array.from(node.subcategories).map(([key, value]) => (
+          createTreeItem(key, value) 
+        ))
+      }
+    </Tree>)
+  }
 
   return (
     // Main container with Inter font and minimal background
     <div className="min-h-screen bg-gray-50 p-8">
       {/* Page Title */}
-      <header className="bg-gray-70 flex">
-        <h1 onClick={toggleRunning} className="text-5xl text-gray-800 tracking-tight grow">
+      <header className="bg-gray-70 flex gap-5 items-center">
+        <h1 className="text-5xl text-gray-800 tracking-tight">
           Dolores
-          &nbsp;
+        </h1>
+        <input className="grow text-gray-800 text-4xl bg-gray-100 rounded-full p-5" placeholder='Classifier'></input>
+        <div onClick={toggleRunning} className='text-4xl'>
           {isRunning && "✅"}
           {!isRunning && "❌"}
-        </h1>
-        {tabs()}
+        </div>
       </header>
 
       {/* Conditional rendering based on loading and error states */}
-      {isRunning && isLoading && (
+      {isRunning && root == null && (
         <div className="text-center text-gray-600 text-lg">Loading news events...</div>
       )}
       {error && (
         <div className="text-center text-red-600 text-lg">Error: {error}</div>
       )}
 
-      {!isLoading && !error && (
-        <div className="relative mx-auto space-y-12 p-5 max-w-[calc(50%)] mt-5">
-          {storiesList()}
+      {root != null && !error && (
+        <div className='p-5 mt-5 w-full h-full flex'>
+          <div className="h-full w-full">
+            {createTree(root)}
+          </div>
         </div>
       )}
     </div>

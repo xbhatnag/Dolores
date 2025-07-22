@@ -12,29 +12,32 @@ from flask import Flask
 from google.cloud import texttospeech
 
 from rss import spawn_rss_thread
-from structs import NewsStory, NewsStories, ApiStory, WrittenContent, Analyzer
+from structs import NewsStory, NewsStories, ApiStory, WrittenContent
 from dataclasses import asdict
 
 import base64
 
 tts = texttospeech.TextToSpeechClient()
-analyzer = Analyzer()
-stories = NewsStories(analyzer)
+stories = NewsStories()
 app = Flask(__name__)
     
 
 @app.route("/next")
 def get_next_story():
     logging.info("API Call to /next")
-    story: NewsStory = stories.next()
-    response = ApiStory(story)
-    return asdict(response)
+    return stories.next()
 
-@app.route("/all")
+@app.route("/tree")
 def get_all_stories():
-    logging.info("API call to /all")
-    story_list = [asdict(ApiStory(story)) for story in stories.all()]
-    return story_list
+    logging.info("API call to /tree")
+    return stories.tree()
+
+@app.after_request
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'  # Or specify your allowed origin
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    return response
 
 def now() -> datetime:
     # We know we are in west coast.
@@ -66,7 +69,7 @@ def main():
                 content = WrittenContent(**json_dict)
                 stories.queue().put(content)
     else:
-        after = now() - timedelta(days=1)
+        after = now() - timedelta(hours=3)
         if args.after:
             if args.after == "now":
                 after = now()
@@ -75,7 +78,7 @@ def main():
         spawn_rss_thread(stories.queue(), after)
 
     # Serve HTTP server
-    app.run(host="127.0.0.1", port=args.port)
+    app.run(host="0.0.0.0", port=args.port)
 
 
 if __name__ == "__main__":
