@@ -1,47 +1,53 @@
 import argparse
-import base64
-import io
+import dataclasses
 import json
 import logging
 from datetime import datetime, timedelta
-from queue import Queue
 from zoneinfo import ZoneInfo
+from typing import Dict
 
 from dateutil.parser import parse as parse_date
-from flask import Flask
-from google.cloud import texttospeech
+from flask import Flask, request
 
-from rss import spawn_rss_thread
-from structs import NewsStory, NewsStories, ApiStory, WrittenContent
-from dataclasses import asdict
+import os
+from news_providers import spawn_news_providers
+from structs import Newspaper, RssContent, PageContent
+from playwright.sync_api import sync_playwright
+from concurrent.futures import ThreadPoolExecutor
 
-import base64
-
-tts = texttospeech.TextToSpeechClient()
-stories = NewsStories()
+newspaper = Newspaper()
 app = Flask(__name__)
-    
+web_logger = logging.getLogger("API")
+
 
 @app.route("/next")
 def get_next_story():
-    logging.info("API Call to /next")
-    return stories.next()
+    web_logger.info("API Call to /next")
+    story = newspaper.out_queue.get()
+    return story.to_json()
 
-@app.route("/tree")
-def get_all_stories():
-    logging.info("API call to /tree")
-    return stories.tree()
+
+@app.route("/all")
+def all_stories():
+    web_logger.info("API Call to /all")
+    stories = [story.to_json() for story in newspaper.stories]
+    return stories
+
 
 @app.after_request
 def add_cors_headers(response):
-    response.headers['Access-Control-Allow-Origin'] = '*'  # Or specify your allowed origin
-    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    response.headers["Access-Control-Allow-Origin"] = (
+        "*"  # Or specify your allowed origin
+    )
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
     return response
+
 
 def now() -> datetime:
     # We know we are in west coast.
     return datetime.now(tz=ZoneInfo("America/Los_Angeles"))
+
 
 def main():
     parser = argparse.ArgumentParser(description="Dolores")
@@ -56,26 +62,46 @@ def main():
     )
     args = parser.parse_args()
 
-    logging.basicConfig(format="%(levelname)s: %(message)s")
+    logging.basicConfig(
+        format="%(asctime)s | %(levelname)-5s | %(name)-15s | %(message)s"
+    )
     logging.getLogger().setLevel(logging.INFO)
     logging.info("Dolores Backend!")
 
+    # Disable spammy loggers
+    to_disable = [
+        "SyncLMStudioWebsocket",
+        "AsyncWebsocketHandler",
+        "werkzeug",
+        "AsyncWebsocketThread",
+        "httpx",
+    ]
+    for name in to_disable:
+        logging.getLogger(name).disabled = True
+
     if args.cache:
-        with open("/tmp/articles.json") as f:
-            lines = f.readlines()
-            logging.info("Reading %d cached stories", len(lines))
-            for line in lines:
-                json_dict = json.loads(line)
-                content = WrittenContent(**json_dict)
-                stories.queue().put(content)
+        files = os.listdir("/tmp/articles")
+        logging.info("Reading %d cached articles...", len(files))
+        for file in files:
+            with open("/tmp/articles/" + file) as f:
+                lines = f.readlines()
+
+                json_dict = json.loads(lines[0])
+                rss_content = RssContent(**json_dict)
+
+                json_dict = json.loads(lines[1])
+                page_content = PageContent(**json_dict)
+
+                newspaper.in_queue.put((rss_content, page_content))
     else:
-        after = now() - timedelta(hours=3)
+        after = now() - timedelta(days=1)
         if args.after:
             if args.after == "now":
                 after = now()
             else:
                 after = parse_date(args.after)
-        spawn_rss_thread(stories.queue(), after)
+        thread_pool = ThreadPoolExecutor(max_workers=5)
+        spawn_news_providers(thread_pool, newspaper.in_queue, after)
 
     # Serve HTTP server
     app.run(host="0.0.0.0", port=args.port)

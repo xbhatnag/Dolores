@@ -1,20 +1,18 @@
 import dataclasses
 from typing import List
-from tts import generate_audio, random_narrator
 
 import re
 import bs4
-from threading import Lock, Thread
+from threading import Thread
 
 from datetime import datetime, timezone
 from dateutil.parser import parse as parse_date
 from pydantic import BaseModel
 from queue import Queue
-import google.genai
-import google.genai.types
+import lmstudio as lms
+from pydantic import BaseModel
 
 import logging
-import json
 import uuid
 
 
@@ -26,10 +24,9 @@ def strip_html(html: str) -> str:
 
 
 @dataclasses.dataclass
-class WrittenContent:
+class RssContent:
     source: str
     title: str
-    type: str
     authors: List[str]
     tags: List[str]
     text: str
@@ -63,185 +60,305 @@ class WrittenContent:
         text = " ".join(text)
 
         # Add spaces after full stops.
-        self.text = re.sub(r"\.(?!\\s)(?!\\d)(?!$)", ". ", text)
+        self.text = re.sub(r"\.(?!\\s)(?!\\d)(?!$)", ". ", self.text)
+
+
+@dataclasses.dataclass
+class PageContent:
+    text: str
+    favicon_url: str
 
 
 @dataclasses.dataclass
 class Analysis(BaseModel):
     conclusion: str
     summary: str
-    feelings: str
+    subjects: list[str]
+
+
+@dataclasses.dataclass
+class JsonStory:
+    uuid: str
+    conclusion: str
+    summary: str
+    subjects: list[str]
+    url: str
+    favicon: str
 
 
 class NewsStory:
     uuid: str
     analysis: Analysis
-    content: WrittenContent
+    rss_content: RssContent
+    page_content: PageContent
 
-    def __init__(self, content: WrittenContent, analysis: Analysis):
+    def __init__(
+        self, rss_content: RssContent, page_content: PageContent, analysis: Analysis
+    ):
         self.uuid = uuid.uuid4().hex
-        self.content = content
+        self.rss_content = rss_content
+        self.page_content = page_content
         self.analysis = analysis
 
-
-class Analyzer:
-    def __init__(self):
-        with open("./analyzer_prompt.md") as f:
-            system_prompt = f.read()
-
-        tools = []
-        # tools.append(types.Tool(url_context=types.UrlContext))
-        # tools.append(google.genai.types.Tool(google_search=google.genai.types.GoogleSearch))
-        self.chat = google.genai.Client(
-            vertexai=True,
-            project="dolores-cb057",
-            location="us-west1",
-            http_options=google.genai.types.HttpOptions(api_version="v1"),
-        ).chats.create(
-            model="gemini-2.5-pro",
-            config=google.genai.types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                tools=tools,
-                response_mime_type="application/json",
-                response_schema=Analysis,
-            ),
+    def to_json(self):
+        json_story = JsonStory(
+            uuid=self.uuid,
+            conclusion=self.analysis.conclusion,
+            summary=self.analysis.summary,
+            subjects=self.analysis.subjects,
+            url=self.rss_content.url,
+            favicon=self.page_content.favicon_url,
         )
-
-    def analyze(self, content: WrittenContent):
-        logging.info("Analyzing \"%s\"...", content.title)
-        response = self.chat.send_message(
-            message=f"""{content.title}
-
-{content.tags}
-
-{content.text}
-"""
-        )
-
-        assert isinstance(response.parsed, Analysis)
-
-        return response.parsed
+        return dataclasses.asdict(json_story)
 
 
-@dataclasses.dataclass
-class ApiStory:
-    uuid: str
-    conclusion: str
-    summary: str
-    feelings: str
-    url: str
-
-    def __init__(self, story: NewsStory):
-        self.uuid = story.uuid
-        self.conclusion = story.analysis.conclusion
-        self.summary = story.analysis.summary
-        self.feelings = story.analysis.feelings
-        self.url = story.content.url
-
-def create_gemini_category_tree(level):
-    if level["subcategories"]:
-        new_tree = {}
-        for key in level["subcategories"]:
-            new_tree[key] = create_gemini_category_tree(level["subcategories"][key])
-        return new_tree
-    return {}
-
-def insert(story: NewsStory, root: dict, path: List[str]):
-    node: dict = root
-    logging.info(f"Inserting {story.analysis.conclusion} at {path}")
-    for key in path:
-        if key not in node["subcategories"]:
-            node["subcategories"][key] = {
-                "subcategories": {},
-                "stories": []
-            }
-        node = node["subcategories"][key]
-    node["stories"].append(dataclasses.asdict(ApiStory(story)))
-
-class Categorizer:
-    tree: dict
-
-    def __init__(self):
-        self.tree = {
-            "subcategories": {},
-            "stories": []
-        }
-        with open("./categorizer_prompt.md") as f:
-            system_prompt = f.read()
-
-        tools = []
-        # tools.append(types.Tool(url_context=types.UrlContext))
-        # tools.append(google.genai.types.Tool(google_search=google.genai.types.GoogleSearch))
-        self.chat = google.genai.Client(
-            vertexai=True,
-            project="dolores-cb057",
-            location="us-west1",
-            http_options=google.genai.types.HttpOptions(api_version="v1"),
-        ).chats.create(
-            model="gemini-2.5-flash",
-            config=google.genai.types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                tools=tools,
-                response_mime_type="application/json",
-            ),
-        )
-
-
-    def categorize(self, story: NewsStory):
-        logging.info("Categorizing \"%s\"", story.analysis.conclusion)
-        tree = create_gemini_category_tree(self.tree)
-        tree_str = json.dumps(tree)
-
-        response = self.chat.send_message(
-            message=f"""{story.analysis.conclusion}
-{story.analysis.summary}
--------------------
-{tree_str}
-"""
-        )
-
-        assert response.text
-        path = json.loads(response.text)
-
-        assert isinstance(path, list)
-        
-        insert(story, self.tree, path)
-
-
-class NewsStories:
-    story_list: List[NewsStory]
-    lock: Lock
-    content_queue: Queue[WrittenContent]
-    analyzer: Analyzer
-    categorizer: Categorizer
+class Newspaper:
+    in_queue: Queue
+    stories: List[NewsStory]
+    out_queue: Queue[NewsStory]
+    thread: Thread
+    logger: logging.Logger
 
     def __init__(self) -> None:
-        self.story_list = []
-        self.analyzer = Analyzer()
-        self.categorizer = Categorizer()
-        self.content_queue = Queue()
-        self.lock = Lock()
-        pass
+        self.logger = logging.getLogger("Newspaper")
+        with open("./analyzer_prompt.md") as f:
+            self.system_prompt = f.read()
 
-    def tree(self) -> dict:
-        return self.categorizer.tree
+        self.in_queue = Queue()
+        self.stories = []
+        self.out_queue = Queue()
+        self.thread = Thread(target=self.loop)
+        self.thread.daemon = True
+        self.thread.start()
 
-    def next(self) -> dict:
-        # Hanging call will wait until a new story is received
-        # and analyzed
-        content: WrittenContent = self.content_queue.get()
-        analysis = self.analyzer.analyze(content)
-        story = NewsStory(content, analysis)
-        self.categorizer.categorize(story)
-        with self.lock:
-            self.story_list.append(story)
-        return self.categorizer.tree
+    def analyze(self, rss_content: RssContent, page_content: PageContent) -> Analysis:
+        self.logger.info('Analyzing: "%s"', rss_content.title)
+        model = lms.llm()
+        chat = lms.Chat(self.system_prompt)
 
-    def queue(self) -> Queue[WrittenContent]:
-        return self.content_queue
+        text = page_content.text
+        if not text:
+            rss_content.text
 
-    def get(self, uuid: str) -> NewsStory | None:
-        with self.lock:
-            return next(
-                (story for story in self.story_list if story.uuid == uuid), None
-            )
+        prompt = f"""{rss_content.title}
+{text}
+"""
+        chat.add_user_message(prompt)
+
+        response = model.respond(chat, response_format=Analysis)
+
+        analysis = Analysis.model_validate_json(response.content, strict=True)
+
+        return analysis
+
+    def loop(self):
+        while True:
+            # Hanging call will wait until new content is received
+            self.logger.info("Waiting for news providers...")
+            rss_content, page_content = self.in_queue.get()
+            analysis = self.analyze(rss_content, page_content)
+            story = NewsStory(rss_content, page_content, analysis)
+            self.stories.append(story)
+
+            # Push the story to the outgoing queue
+            self.out_queue.put(story)
+
+
+# class Categorizer:
+#     system_prompt: str
+
+#     def __init__(self):
+#         with open("./categorizer_prompt.md") as f:
+#             self.system_prompt = f.read()
+
+#     def get_categories(self, stories: List[NewsStory]) -> List[str]:
+#         # Create new categories
+#         prompt = ""
+
+#         for story in stories:
+#             prompt += f"Article: {story.analysis.conclusion}\n\n"
+
+#         model = lms.llm()
+#         chat = lms.Chat(self.system_prompt)
+#         chat.add_user_message(prompt)
+
+#         class CategorizeAnswer(BaseModel):
+#             categories: List[str]
+
+#         response = model.respond(chat, response_format=CategorizeAnswer)
+
+#         categories = CategorizeAnswer.model_validate_json(
+#             response.content, strict=True
+#         ).categories
+
+#         logging.info("New Categories: %s", categories)
+
+#         return categories
+
+
+# @dataclasses.dataclass
+# class Node:
+#     children: Dict[str, Any]
+
+#     def __getitem__(self, key: str):
+#         return self.children[key]
+
+#     def __contains__(self, key: str) -> bool:
+#         return key in self.children
+
+#     def add_story(self, story: NewsStory):
+#         self.children[story.uuid] = story
+
+#     def add_category(self, category: str):
+#         if category in self.children:
+#             return
+#         self.children[category] = Node({})
+
+#     def remove_stories(self) -> List[NewsStory]:
+#         stories = self.stories()
+#         for story in stories:
+#             del self.children[story.uuid]
+#         return stories
+
+#     def stories(self) -> List[NewsStory]:
+#         return [v for v in self.children.values() if isinstance(v, NewsStory)]
+
+#     def categories(self) -> Dict[str, Self]:
+#         categories = {}
+#         for k, v in self.children.items():
+#             if isinstance(v, Node):
+#                 categories[k] = v
+#         return categories
+
+#     def categories_to_json(self) -> dict:
+#         categories = {}
+#         for category, child in self.categories().items():
+#             categories[category] = child.categories_to_json()
+#         return categories
+
+#     def to_json(self) -> dict:
+#         output = {"subcategories": {}, "stories": []}
+#         for key, value in self.children.items():
+#             if isinstance(value, NewsStory):
+#                 output["stories"].append(value.to_json())
+#             elif isinstance(value, Node):
+#                 output["subcategories"][key] = value.to_json()
+#             else:
+#                 raise AssertionError("Unexpeced type in Node child")
+#         return output
+
+
+# class Inserter:
+#     system_prompt: str
+
+#     def __init__(self):
+#         with open("./inserter_prompt.md") as f:
+#             self.system_prompt = f.read()
+
+#     def find_insertion_point(self, root: Node, story: NewsStory) -> Node:
+#         node = root
+#         if root.categories():
+#             logging.info("Consulting smart insert for %s", story.analysis.conclusion)
+#             categories_json = root.categories_to_json()
+#             categories_str = json.dumps(categories_json)
+
+#             prompt = f"Article: {story.analysis.conclusion}\n\n{categories_str}"
+
+#             model = lms.llm()
+#             chat = lms.Chat(self.system_prompt)
+#             chat.add_user_message(prompt)
+
+#             class InsertAnswer(BaseModel):
+#                 path: List[str]
+
+#             answer = InsertAnswer.model_validate_json(
+#                 model.respond(chat, response_format=InsertAnswer).content, strict=True
+#             )
+
+#             logging.info("Adding %s to %s", story.analysis.conclusion, answer.path)
+
+#             # Traverse to the correct node
+#             for key in answer.path:
+#                 if key not in node:
+#                     logging.error("Couldn't find node: %s", key)
+#                     break
+#                 node = node[key]
+#         return node
+
+#     def insert(self, root: Node, story: NewsStory):
+#         logging.info('Inserting "%s"', story.analysis.conclusion)
+#         node = self.find_insertion_point(root, story)
+
+#         # Add the story
+#         node.add_story(story)
+
+
+# class Filter:
+#     system_prompt: str
+
+#     def __init__(self):
+#         with open("./filter_prompt.md") as f:
+#             self.system_prompt = f.read()
+
+#     def matches(self, story: NewsStory, criteria: str) -> bool:
+#         logging.info(
+#             'Checking if "%s" matches criteria "%s"',
+#             story.analysis.conclusion,
+#             criteria,
+#         )
+#         model = lms.llm()
+#         chat = lms.Chat(self.system_prompt)
+
+#         prompt = f"""Criteria: {criteria}
+
+# Article: {story.analysis.conclusion} {story.analysis.summary}
+# """
+#         chat.add_user_message(prompt)
+
+#         class FilterAnswer(BaseModel):
+#             include: bool
+
+#         response = model.respond(chat, response_format=FilterAnswer)
+
+#         response = FilterAnswer.model_validate_json(response.content, strict=True)
+
+#         return response.include
+
+
+# class NewsSession:
+#     filter: Filter
+#     criteria: str
+#     newspaper: Newspaper
+#     in_queue: Queue[NewsStory]
+#     out_queue: Queue[NewsStory]
+#     filtered_stories: List[NewsStory]
+#     thread: Thread
+
+#     def __init__(self, newspaper: Newspaper, criteria: str):
+#         logging.info("Creating new session with criteria: %s", criteria)
+#         self.filter = Filter()
+#         self.criteria = criteria
+#         self.newspaper = newspaper
+#         self.in_queue = Queue()
+#         self.out_queue = Queue()
+
+#         # Add all existing stories into our queue
+#         for story in self.newspaper.stories:
+#             self.in_queue.put(story)
+
+#         # Listen to the newspaper for future updates
+#         self.newspaper.out_queues.append(self.in_queue)
+
+#         # Start a thread to process the stories
+#         self.thread = Thread(target=self.loop)
+#         self.thread.daemon = True
+#         self.thread.start()
+
+#     def loop(self):
+#         while True:
+#             story = self.in_queue.get()
+#             if (not self.criteria) or self.filter.matches(story, self.criteria):
+#                 logging.info(
+#                     'Adding "%s" to "%s"', story.analysis.conclusion, self.criteria
+#                 )
+#                 self.out_queue.put(story)
