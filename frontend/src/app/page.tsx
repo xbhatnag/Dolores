@@ -1,13 +1,11 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 
-interface NewsStory {
-  uuid: string,
-  conclusion: string,
-  summary: string,
+interface Analysis {
+  _id: string,
+  takeaways: Array<string>,
   subjects: Array<string>,
-  url: string,
-  favicon: string,
+  time_sensitive: boolean,
 }
 
 function sleep(ms: number): Promise<void> {
@@ -16,13 +14,12 @@ function sleep(ms: number): Promise<void> {
 
 const App = () => {
   // State to hold the news events, initially an empty array
-  const [id, setId] = useState<string>("");
-  const [criteria, setCriteria] = useState("");
-  const [stories, setStories] = useState<Array<NewsStory>>([]);
-  const [isRunning, setRunning] = useState(true);
-  const [gotAllStories, setGotAllStories] = useState(false);
+  const [stories, setStories] = useState<Array<Analysis>>([]);
+  const [selectedStory, setSelectedStory] = useState<string | null>(null);
+  const [input, setInput] = useState<Map<string, string>>(new Map());
+  const [timeSensitive, setTimeSensitive] = useState<boolean>(true);
 
-  const url = "http://localhost:8080";
+  const url = "http://localhost:3000";
   const get_json_retry = async (url: string) => {
     while (true) {
       try {
@@ -45,38 +42,65 @@ const App = () => {
 
   const get_all_stories = async () => {
     console.log("Getting all stories...");
-    const stories: Array<NewsStory> = await get_json_retry(url + "/all");
+    const stories: Array<Analysis> = await get_json_retry(url + "/all");
     setStories(stories);
-    setGotAllStories(true);
-  }
-
-  const get_next_story = async () => {
-    console.log("Refreshing...");
-    const next_story: NewsStory = await get_json_retry(url + "/next");
-    console.log(next_story)
-    setStories(current_stories => current_stories.concat([next_story]));
-    get_next_story();
+    setTimeout(get_all_stories, 10000);
   }
 
   useEffect(() => {
-    if (!isRunning) {
+    get_all_stories();
+  }, []);
+
+  const selectStory = (story: Analysis) => {
+    setSelectedStory(story._id);
+  }
+
+  const maybeShadow = (story: Analysis) => {
+    if (selectedStory == story._id) {
+      return "selected-story shadow-lg";
+    } else {
+      return "";
+    }
+  }
+
+  const visibleIfSelected = (story: Analysis) => {
+    if (selectedStory == story._id) {
+      return "";
+    } else {
+      return "hidden"
+    }
+  }
+
+  const ask = async () => {
+    if (selectedStory == null) {
       return;
     }
-    if (!gotAllStories) {
-      get_all_stories();
-    } else {
-      get_next_story();
+    const query = input.get(selectedStory)
+    if (query == null) {
+      return;
     }
-  }, [isRunning, gotAllStories])
+    console.log("Asking \"" + query + "\"")
+    const ask_url = url + "/ask?id=" + selectedStory + "&q=" + query
+    const response = await fetch(ask_url, {
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
+    console.log(await response.text())
+  }
 
-  useEffect(() => {
-    if (isRunning) {
-      get_all_stories();
+  const onEnterPressed = (e: any) => {
+    if (e.key == "Enter") {
+      ask();
     }
-  }, [isRunning]);
+  }
 
-  const getFavicon = (url: string, favicon: string) => {
-    return
+  const onInputChange = (e: any) => {
+    if (selectedStory == null) {
+      return;
+    }
+    var new_input = input.set(selectedStory, e.target.value);
+    setInput(new_input);
   }
 
   return (
@@ -87,26 +111,54 @@ const App = () => {
         <h1 className="text-5xl text-gray-800 tracking-tight">
           Dolores
         </h1>
+        <button onClick={() => { setTimeSensitive(true) }}>Show Time-Sensitive</button>
+        <button onClick={() => { setTimeSensitive(false) }}>Show Non-Time-Sensitive</button>
       </header>
 
-      <table>
-        {stories.toReversed().map((s) => (
-          <tr>
-            <td className="align-top h-5 w-5"><a href={s.url} target="_blank"><img src={s.favicon} className='mt-1' /></a></td>
-            <td className="ml-1 mb-3 flex flex-col">
-              <div className="flex text-gray-800 text-xl">{s.conclusion}</div>
-              <div className="text-gray-600">{s.summary}</div>
-              <div className='flex'>
-                {s.subjects.slice(0, 3).map((subject) => (
-                  <div className="text-gray-600 mr-2 bg-gray-100 rounded-full pl-2 pr-2">
-                    {subject}
-                  </div>
+      {selectedStory && (
+        <div className="blur" onClick={() => { setSelectedStory(null) }}></div>
+      )}
+
+      <div>
+        {stories.toReversed().filter(s => s.time_sensitive === timeSensitive).map((s) => (
+          <div key={s._id} className={`mb-5 p-3 story bg-white ${maybeShadow(s)} rounded-b-4xl`}>
+            <div onClick={() => { selectStory(s) }}>
+              <div className="flex text-gray-800 text-xl items-center gap-2">
+                <div>{s.takeaways[0]}</div>
+                {/* {s.articles.map((a) => selectedStory != s._id && (
+                  <a href={a.url} target="_blank" className="flex-shrink-0">
+                    <img src={a.favicon} className="h-5 w-5" />
+                  </a>
+                ))} */}
+              </div>
+              {s.takeaways.slice(1, undefined).map((t) => (
+                <div className="text-gray-600">{t}</div>
+              ))}
+            </div>
+
+            <div className={`flex flex-col ${visibleIfSelected(s)}`}>
+              <div className='flex gap-2 mt-2 mb-2 overflow-scroll'>
+                {s.subjects.map((term) => (
+                  <a href={`https://google.com/search?q=${term}`} target='_blank'>
+                    <div className="text-gray-600 mr-2 bg-gray-100 rounded-full pl-2 pr-2">
+                      {term}
+                    </div>
+                  </a>
                 ))}
               </div>
-            </td>
-          </tr>
+              <div className="mt-2">
+                {/* {s.articles.map((a) => selectedStory == s._id && (
+                  <a key={a.url} href={a.url} target="_blank" className='text-gray-600 flex items-center gap-2'>
+                    <img src={a.favicon} className="h-4 w-4" />
+                    <div>{a.title}</div>
+                  </a>
+                ))} */}
+              </div>
+              <input className="outline-1 p-2 rounded-full text-black mt-4" placeholder="Ask a question..." onKeyDown={onEnterPressed} onChange={onInputChange}></input>
+            </div>
+          </div>
         ))}
-      </table>
+      </div>
     </div>
   );
 };

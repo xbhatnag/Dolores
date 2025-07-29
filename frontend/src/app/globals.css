@@ -24,3 +24,32 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.story {
+  transition: all 0.25s ease-in-out;
+  position: relative;
+}
+
+.blur {
+  z-index: 2;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  animation: blur-in 500ms forwards;
+}
+
+@keyframes blur-in {
+  from {
+    backdrop-filter: blur(0px);
+  }
+
+  to {
+    backdrop-filter: blur(10px);
+  }
+}
+
+.selected-story {
+  z-index: 3;
+}
