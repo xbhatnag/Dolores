@@ -13,6 +13,7 @@ import dataclasses
 import random
 import time
 
+
 class PageParser:
     rss_collection: Collection
     page_collection: Collection
@@ -36,15 +37,8 @@ class PageParser:
 
     def parse_loop(self):
         logging.info("Starting Parse Loop")
-        after = None
 
         while True:
-            # Sleep for 2 to 5 minutes
-            duration = random.randint(60 * 2, 60 * 5)
-            logging.info(
-                "Sleeping for %d minutes, %d seconds...", duration // 60, duration % 60
-            )
-            time.sleep(duration)
             thread_pool = ThreadPoolExecutor(max_workers=5)
 
             # Send all RSS content to the thread pool for parsing
@@ -52,14 +46,19 @@ class PageParser:
                 rss_content = RssContent(**rss_content_str)
 
                 if self.page_collection.find_one({"_id": rss_content._id}):
-                    logging.info("Already parsed: %s", rss_content.url)
                     continue
 
                 thread_pool.submit(self.parse, rss_content)
 
-            after = datetime.now(tz=timezone.utc)
             logging.info("Waiting for all pages to parse...")
             thread_pool.shutdown(wait=True)
+
+            # Sleep for 2 to 5 minutes
+            duration = random.randint(60 * 2, 60 * 5)
+            logging.info(
+                "Sleeping for %d minutes, %d seconds...", duration // 60, duration % 60
+            )
+            time.sleep(duration)
 
 
 def now() -> datetime:
@@ -70,9 +69,7 @@ def main():
     parser = argparse.ArgumentParser(description="Page Parser")
     parser.parse_args()
 
-    logging.basicConfig(
-        format="%(asctime)s | %(levelname)-7s | %(message)s"
-    )
+    logging.basicConfig(format="%(asctime)s | %(levelname)-7s | %(message)s")
     logging.getLogger().setLevel(logging.INFO)
 
     # Connect to MongoDB

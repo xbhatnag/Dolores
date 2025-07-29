@@ -15,6 +15,7 @@ import random
 import time
 import dataclasses
 
+
 def get_authors(entry: dict) -> List[str]:
     if "dc:creator" in entry:
         return [entry["dc:creator"]]
@@ -76,41 +77,37 @@ class RssProvider:
     def rss_loop(self):
         self.logger.info("Starting RSS Loop")
         while True:
+            try:
+                all_rss_content: List[RssContent] = self.get_rss()
+
+                # Filter and convert to JSON dicts
+                new_rss_content = [
+                    dataclasses.asdict(a)
+                    for a in filter(
+                        lambda a: a.published_after(self.after), all_rss_content
+                    )
+                ]
+
+                self.logger.info("Read %d RSS articles", len(new_rss_content))
+
+                # Commit to MongoDB
+                if new_rss_content:
+                    self.collection.insert_many(new_rss_content, ordered=False)
+            except BulkWriteError as bwe:
+                for error in bwe.details["writeErrors"]:
+                    if error["code"] == 11000:
+                        self.logger.warning("Duplicate article")
+                    else:
+                        self.logger.error("Bulk write error: %s", error)
+            except Exception as e:
+                self.logger.error("Failed to fetch RSS: %s", e)
+
             # Sleep for 5 to 10 minutes
             duration = random.randint(5 * 60, 10 * 60)
             self.logger.info(
                 "Sleeping for %d minutes, %d seconds", duration // 60, duration % 60
             )
             time.sleep(duration)
-
-            try:
-                all_rss_content: List[RssContent] = self.get_rss()
-            except Exception as e:
-                self.logger.error("Failed to fetch RSS: %s", e)
-                continue
-
-            # Filter and convert to JSON dicts
-            new_rss_content = [
-                dataclasses.asdict(a)
-                for a in filter(
-                    lambda a: a.published_after(self.after), all_rss_content
-                )
-            ]
-
-            self.logger.info("Read %d RSS articles", len(new_rss_content))
-            if not new_rss_content:
-                continue
-
-            # Add the articles to MongoDB
-            try:
-                self.collection.insert_many(new_rss_content, ordered=False)
-            except BulkWriteError as bwe:
-                for error in bwe.details["writeErrors"]:
-                    if error["code"] == 11000:
-                        self.logger.warning("Duplicate article")
-                    else:
-                        # Any other error is unexpected
-                        raise bwe
 
 
 # def read_daring_fireball() -> List[RssContent]:

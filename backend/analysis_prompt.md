@@ -42,42 +42,39 @@ For example: if an article talks about how AI deepfakes of Taylor Swift created 
 
 For example: if an article talks about a new show called Ted Lasso on Apple TV+, then the subjects are ["Ted Lasso", "Apple TV+"]
 
-# Is this a article that makes the reader unhappy?
+# Is this a article that would make the reader unhappy?
 
-In addition to subjects that would make most people unhappy, the following subjects specifically make the reader unhappy:
+Return `true` if the article contains subjects that are likely to make the reader unhappy. Return `false` otherwise.
+
+Most negative subjects make the reader unhappy: illness, famine, depression, death, murder, war.
+
+In addition, the following subjects specifically make the reader unhappy:
 * The current US government under Donald Trump
-* AI causing harm and replacing humans
-* Elon Musk and his companies
+* AI having negative effects on humanity
+* Elon Musk and his companies (X, SpaceX, Tesla)
 
-Return `true` if the article is likely to make the reader unhappy. Return `false` otherwise.
+# Is the article time-sensitive?
 
+Return `true` if the article is time-sensitive. Return `false` if the article is evergreen.
 
-# Is this  
-* Relations between countries (partnerships, war)
-* Company/organization updates (product announcements, mergers, acquisitions, personnel changes)
-* Government updates (new departments, new projects)
-* Deals on products
-* Weekly/Monthly newsletters
+Time-sensitive articles report events that occurred in a specific time period.
 
-Example article titles:
-* "US and China announce partnership to combat climate change"
-* "Apple announces iPhone 25"
-* "US Government creates Department of Household Pets"
-* "HP Elite PC is $200 off until Memorial Day!"
+For example, the following articles are time-sensitive:
+* an article that talks about the Presidential Inauguration that occurred on _January 5, 2024_.
+* an article that discusses the best fashion trends of _2025_.
+* an article that discusses a new partnership between the US and Canada starting _April 2026_.
+* an article that reports about Jingle Cola's CEO being fired _yesterday_.
+* an article that reports on a Tsunami that affected the Himalayas _last week_.
+* an article that talks about discount deals that will be available on _Memorial Day_.
+* an article that talks about the new iPhone 16, which will be launched _1 year from now_.
 
-An article is evergreen if it remains relevant and useful long after its publication date. The information is not tied to a specific event or breaking news, and people can find value in it for months or even years.
+An evergreen article is the opposite. Evergreen articles do not report on events that occur in a specific time period.
 
-Here are the kinds of articles that are evergreen:
-* Guides
-* Hacks and Projects
-* Reviews of products
-* Advice
-
-Example article titles:
-* "Always wanted to self-serve your website? Here's how!"
-* "Building a tennis ball launcher from spare machine parts"
-* "Samsung S24 Review: the camera is the best part!"
-* "5 ways I use a self-hosted LLM to help me be more organized and more productive"
-* "6 ways my NAS can survive anything short of a data apocalypse"
-* "I "debloated" Windows 11 through official means, and here's how you can too"
-* "5 reasons your next gaming rig should have an NPU"
+For example, the following articles are evergreen:
+* an article that guides users on how to self-host their personal website
+* an article that talks about how an engineer built a rocket out of spare parts in their garage
+* an article that reviews a consumer tech device like the Samsung Galaxy S16
+* an article that shares opinions on cloud based storage
+* an article that gives reasons for upgrading your GPU
+* an article that compares Intel Macbook Pro to the M1 Macbook Pro
+* an article that reviews season 2 of the TV show "Severance"

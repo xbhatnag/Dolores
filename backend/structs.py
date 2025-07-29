@@ -126,23 +126,11 @@ class PageContent:
             return None
 
 
-class Article:
-    search_terms: set[str]
-    rss_content: RssContent
-    page_content: PageContent
-
-    def __init__(
-        self, rss_content: RssContent, page_content: PageContent, search_terms: set[str]
-    ):
-        self.rss_content = rss_content
-        self.page_content = page_content
-        self.search_terms = search_terms
-
-
 class LlmAnalysis(BaseModel):
     takeaways: list[str]
     subjects: set[str]
-    enjoyable: bool
+    unhappy: bool
+    time_sensitive: bool
 
 
 @dataclasses.dataclass
@@ -150,17 +138,21 @@ class Analysis:
     _id: str
     title: str
     url: str
+    favicon_url: str
     takeaways: list[str]
-    subjects: list[str]
-    enjoyable: bool
+    tags: List[str]
 
     @staticmethod
     def from_llm_analysis(llm_analysis: LlmAnalysis, page_content: PageContent):
+        tags = [tag for tag in llm_analysis.subjects if tag]
+        tags.append("Unhappy" if llm_analysis.unhappy else "Happy")
+        tags.append("Time Sensitive" if llm_analysis.time_sensitive else "Evergreen")
+
         return Analysis(
             _id=page_content._id,
             title=page_content.title,
             url=page_content.url,
+            favicon_url=page_content.favicon_url,
             takeaways=llm_analysis.takeaways,
-            subjects=list(llm_analysis.subjects),
-            enjoyable=llm_analysis.enjoyable,
+            tags= tags,
         )

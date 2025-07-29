@@ -23,7 +23,7 @@ def now() -> datetime:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="RSS Provider")
+    parser = argparse.ArgumentParser(description="RSS Watcher")
     parser.parse_args()
 
     logging.basicConfig(

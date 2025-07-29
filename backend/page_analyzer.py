@@ -9,6 +9,7 @@ import random
 import time
 import dataclasses
 
+
 class Analyzer:
     page_collection: Collection
     analysis_collection: Collection
@@ -44,13 +45,23 @@ class Analyzer:
 
         analysis = Analysis.from_llm_analysis(llm_analysis, page_content)
 
-        logging.info("Analysis complete: %s", analysis.takeaways[0])
+        logging.info("Analysis complete: %s", analysis.title)
 
         return analysis
 
     def loop(self):
         logging.info("Starting Analysis Loop")
         while True:
+            # Analyze page content that's not part of a story
+            for page_content_str in self.page_collection.find():
+                page_content = PageContent(**page_content_str)
+
+                if self.analysis_collection.find_one({"_id": page_content._id}):
+                    break
+
+                analysis = self.analyze(page_content)
+                self.analysis_collection.insert_one(dataclasses.asdict(analysis))
+
             # Sleep for 2 to 5 minutes
             duration = random.randint(60 * 2, 60 * 5)
             logging.info(
@@ -58,20 +69,9 @@ class Analyzer:
             )
             time.sleep(duration)
 
-            # Analyze page content that's not part of a story
-            for page_content_str in self.page_collection.find():
-                page_content = PageContent(**page_content_str)
-
-                if self.analysis_collection.find_one({"_id": page_content._id}):
-                    logging.info("Already analyzed: %s", page_content.title)
-                    continue
-
-                analysis = self.analyze(page_content)
-                self.analysis_collection.insert_one(dataclasses.asdict(analysis))
-
 
 def main():
-    parser = argparse.ArgumentParser(description="RSS Analyzer")
+    parser = argparse.ArgumentParser(description="Page Analyzer")
     parser.parse_args()
 
     logging.basicConfig(format="%(asctime)s | %(levelname)-7s | %(message)s")

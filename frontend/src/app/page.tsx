@@ -3,9 +3,11 @@ import React, { useState, useEffect } from 'react';
 
 interface Analysis {
   _id: string,
+  title: string,
+  url: string,
+  favicon_url: string,
   takeaways: Array<string>,
-  subjects: Array<string>,
-  time_sensitive: boolean,
+  tags: Array<string>,
 }
 
 function sleep(ms: number): Promise<void> {
@@ -17,7 +19,7 @@ const App = () => {
   const [stories, setStories] = useState<Array<Analysis>>([]);
   const [selectedStory, setSelectedStory] = useState<string | null>(null);
   const [input, setInput] = useState<Map<string, string>>(new Map());
-  const [timeSensitive, setTimeSensitive] = useState<boolean>(true);
+  const [filter, setFilter] = useState<string>("");
 
   const url = "http://localhost:3000";
   const get_json_retry = async (url: string) => {
@@ -111,8 +113,7 @@ const App = () => {
         <h1 className="text-5xl text-gray-800 tracking-tight">
           Dolores
         </h1>
-        <button onClick={() => { setTimeSensitive(true) }}>Show Time-Sensitive</button>
-        <button onClick={() => { setTimeSensitive(false) }}>Show Non-Time-Sensitive</button>
+        <input type="text" placeholder="Filter by tag..." value={filter} onChange={(e) => setFilter(e.target.value)} />
       </header>
 
       {selectedStory && (
@@ -120,28 +121,28 @@ const App = () => {
       )}
 
       <div>
-        {stories.toReversed().filter(s => s.time_sensitive === timeSensitive).map((s) => (
+        {stories.toReversed().filter(s => s.tags.some(tag => tag.includes(filter))).map((s) => (
           <div key={s._id} className={`mb-5 p-3 story bg-white ${maybeShadow(s)} rounded-b-4xl`}>
             <div onClick={() => { selectStory(s) }}>
               <div className="flex text-gray-800 text-xl items-center gap-2">
-                <div>{s.takeaways[0]}</div>
-                {/* {s.articles.map((a) => selectedStory != s._id && (
-                  <a href={a.url} target="_blank" className="flex-shrink-0">
-                    <img src={a.favicon} className="h-5 w-5" />
-                  </a>
-                ))} */}
+                <a href={s.url} target="_blank" className="flex-shrink-0">
+                  <img src={s.favicon_url} className="h-5 w-5" />
+                </a>
+                <div>{s.title}</div>
               </div>
-              {s.takeaways.slice(1, undefined).map((t) => (
-                <div className="text-gray-600">{t}</div>
-              ))}
+              <ul>
+                {s.takeaways.map((t) => (
+                  <li className="text-gray-600">➤ {t}</li>
+                ))}
+              </ul>
             </div>
 
             <div className={`flex flex-col ${visibleIfSelected(s)}`}>
               <div className='flex gap-2 mt-2 mb-2 overflow-scroll'>
-                {s.subjects.map((term) => (
-                  <a href={`https://google.com/search?q=${term}`} target='_blank'>
-                    <div className="text-gray-600 mr-2 bg-gray-100 rounded-full pl-2 pr-2">
-                      {term}
+                {s.tags.map((tag) => (
+                  <a href={`https://google.com/search?q=${tag}`} target='_blank'>
+                    <div className="text-gray-600 mr-2 bg-gray-100 rounded-full pl-2 pr-2 whitespace-nowrap">
+                      {tag}
                     </div>
                   </a>
                 ))}
