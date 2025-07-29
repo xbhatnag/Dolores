@@ -42,13 +42,17 @@ For example: if an article talks about how AI deepfakes of Taylor Swift created 
 
 For example: if an article talks about a new show called Ted Lasso on Apple TV+, then the subjects are ["Ted Lasso", "Apple TV+"]
 
-# Is the article time-sensitive?
+# Is this a article that makes the reader unhappy?
 
-Return `true` if the article is time-sensitive. Return `false` if the article is evergreen.
+In addition to subjects that would make most people unhappy, the following subjects specifically make the reader unhappy:
+* The current US government under Donald Trump
+* AI causing harm and replacing humans
+* Elon Musk and his companies
 
-An article is time-sensitive if it reports on a current event occurring in the world.
+Return `true` if the article is likely to make the reader unhappy. Return `false` otherwise.
 
-Here are the kinds of articles that are time-sensitive:
+
+# Is this  
 * Relations between countries (partnerships, war)
 * Company/organization updates (product announcements, mergers, acquisitions, personnel changes)
 * Government updates (new departments, new projects)
