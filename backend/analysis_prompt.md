@@ -20,61 +20,68 @@ Here are some bad takeaways:
 
 These takeaways are bad because the first takeaway says "It", but the reader does not know what "It" is. Also, the third takeaway is generic and irreleveent to the subject of the article "GoPro 5".
 
-# Identify the most relevant subjects in the article.
+# Create search terms for the article
 
-What/Who is the article about?
-
-Subjects can be:
-*  People (examples: Taylor Swift, Kim Kardashian)
-*  Companies (examples: Apple, Google, OpenAI)
-*  Organizations (examples: United Nations, Department of Defense)
-*  Products (examples: iPhone, Android, ChatGPT)
-*  Places (examples: US, China, Sri Lanka, Beijing, Nevada, New York)
-*  Technologies (examples: AI, AR/VR, Databases)
-*  Proper Nouns
+What are the words that can be put into a Google Search to find this article again?
 
 Rules:
-* Subjects must be mentioned in the article.
-* Prefer acronyms. For example, prefer "LLM" over "Large Language Models".
-* For places, products and technologies, be as specific as possible. Avoid broad subjects that could apply to many articles. For example, prefer "Nevada" over "US". For example, prefer "iPhone 15" over "iPhone". For example, prefer "AI deepfakes" over "AI".
+* Balance precision with conciseness. You want to be as descriptive as possible in as few words as possible.
+* Prefer acronyms.
+* Do not repeat yourself.
 
-For example: if an article talks about how AI deepfakes of Taylor Swift created with Midjourney are spreading on Twitter, then the subjects are ["Taylor Swift", "Twitter", "Midjourney", "AI deepfakes"].
-
-For example: if an article talks about a new show called Ted Lasso on Apple TV+, then the subjects are ["Ted Lasso", "Apple TV+"]
+Here are some example search terms:
+* an article about how AI deepfakes of Taylor Swift created with Midjourney are spreading on Twitter should return the search terms ["Taylor Swift", "Twitter", "Midjourney", "AI deepfakes"].
+* an article about a new cast member Jack Black on the show "Ted Lasso" should return ["Ted Lasso", "Jack Black"]
 
 # Is this a article that would make the reader unhappy?
 
-Return `true` if the article contains subjects that are likely to make the reader unhappy. Return `false` otherwise.
+On a scale of 1 (most unhappy) to 5 (most happy), rate the article based on how likely it is to make the reader happy or unhappy.
 
-Most negative subjects make the reader unhappy: illness, famine, depression, death, murder, war.
-
-In addition, the following subjects specifically make the reader unhappy:
+The following subjects are rated 1 by the reader:
+* Physical harm: famine, illness, death, murder, war, homelessness, drug abuse.
+* Mental health issues: depression, anxiety.
 * The current US government under Donald Trump
-* AI having negative effects on humanity
-* Elon Musk and his companies (X, SpaceX, Tesla)
+* AI having negative effects on humanity (stealing jobs, energy crisis)
+* Elon Musk and his companies (X, SpaceX, Tesla, Neuralink)
+* Environmental degradation (especially point-of-no-return)
+* AI hype/fear-mongering, usually done by CEOs (e.g - Sam Altman) or people who don't code
 
-# Is the article time-sensitive?
+The following subjects are rated 5 by the reader:
+* Announcements of new TV shows, movies, consumer products, games or features
+* Computer projects, prototypes and hacks
+* Consumer product reviews or comparisons
 
-Return `true` if the article is time-sensitive. Return `false` if the article is evergreen.
+# Would the article impact the reader?
 
-Time-sensitive articles report events that occurred in a specific time period.
+On a scale of 1 (least) to 5 (most), rate how likely it is to directly impact the reader.
 
-For example, the following articles are time-sensitive:
+The reader is:
+* living in San Francisco, California
+* of Indian descent
+* a Canadian citizen
+* working for Google
+* an LGBTQ individual
+* left-leaning when it comes to political viewpoints
+
+# Is this breaking news?
+
+Return `true` if the article is breaking news, `false` otherwise.
+
+Breaking news is an important real-world event that has occurred or will occur in the future.
+
+Here are some examples that are breaking news (notice the emphasis on dates):
 * an article that talks about the Presidential Inauguration that occurred on _January 5, 2024_.
-* an article that discusses the best fashion trends of _2025_.
 * an article that discusses a new partnership between the US and Canada starting _April 2026_.
-* an article that reports about Jingle Cola's CEO being fired _yesterday_.
 * an article that reports on a Tsunami that affected the Himalayas _last week_.
+* an article that talks about new features announced _today_ for Adobe Photoshop.
 * an article that talks about discount deals that will be available on _Memorial Day_.
 * an article that talks about the new iPhone 16, which will be launched _1 year from now_.
 
-An evergreen article is the opposite. Evergreen articles do not report on events that occur in a specific time period.
-
-For example, the following articles are evergreen:
+Here are some examples that are not breaking news:
 * an article that guides users on how to self-host their personal website
 * an article that talks about how an engineer built a rocket out of spare parts in their garage
 * an article that reviews a consumer tech device like the Samsung Galaxy S16
 * an article that shares opinions on cloud based storage
 * an article that gives reasons for upgrading your GPU
 * an article that compares Intel Macbook Pro to the M1 Macbook Pro
-* an article that reviews season 2 of the TV show "Severance"
+* an article that reviews season 2 of the TV show "Severance" 

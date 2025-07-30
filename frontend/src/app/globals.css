@@ -25,7 +25,7 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-.story {
+.article {
   transition: all 0.25s ease-in-out;
   position: relative;
 }
@@ -50,6 +50,6 @@ body {
   }
 }
 
-.selected-story {
+.selected-article {
   z-index: 3;
 }

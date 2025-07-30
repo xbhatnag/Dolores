@@ -88,6 +88,8 @@ class RssProvider:
                     )
                 ]
 
+                self.after = datetime.now()
+
                 self.logger.info("Read %d RSS articles", len(new_rss_content))
 
                 # Commit to MongoDB
@@ -99,6 +101,7 @@ class RssProvider:
                         self.logger.warning("Duplicate article")
                     else:
                         self.logger.error("Bulk write error: %s", error)
+                        raise bwe
             except Exception as e:
                 self.logger.error("Failed to fetch RSS: %s", e)
 
@@ -145,8 +148,6 @@ class TheVerge(RssProvider):
         xml = get_xml("https://www.theverge.com/rss/index.xml")
         entries = xml["feed"]["entry"]
         rss_content = []
-
-        print(len(entries), "entries found in The Verge RSS feed")
 
         for entry in entries:
             rss_content.append(
@@ -302,6 +303,25 @@ class XdaDevelopers(RssProvider):
                     tags=get_categories(entry),
                     authors=get_authors(entry),
                     text=entry["content:encoded"],
+                    url=entry["link"],
+                    pub_date=entry["pubDate"],
+                )
+            )
+        return rss_content
+
+class BBC(RssProvider):
+    def get_rss(self) -> List[RssContent]:
+        xml = get_xml("http://feeds.bbci.co.uk/news/rss.xml")
+        entries = xml["rss"]["channel"]["item"]
+        rss_content = []
+        for entry in entries:
+            rss_content.append(
+                RssContent.from_raw(
+                    source="BBC",
+                    title=entry["title"],
+                    tags=[],
+                    authors=[],
+                    text=entry["description"],
                     url=entry["link"],
                     pub_date=entry["pubDate"],
                 )

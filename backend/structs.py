@@ -101,10 +101,12 @@ class RssContent:
 @dataclasses.dataclass
 class PageContent:
     _id: str
+    source: str
     title: str
     url: str
     text: str
     favicon_url: str
+    pub_date: str
 
     @staticmethod
     def from_rss(rss: RssContent):
@@ -117,7 +119,7 @@ class PageContent:
                 favicon_url = get_favicon_url(page)
                 page_text: str = get_text_by_classname(page, "p")
                 page_content = PageContent(
-                    rss._id, rss.title, rss.url, page_text, favicon_url
+                    rss._id, rss.source, rss.title, rss.url, page_text, favicon_url, rss.pub_date
                 )
                 logging.info("Parse complete: %s", rss.url)
                 return page_content
@@ -128,9 +130,10 @@ class PageContent:
 
 class LlmAnalysis(BaseModel):
     takeaways: list[str]
-    subjects: set[str]
-    unhappy: bool
-    time_sensitive: bool
+    search_terms: set[str]
+    happy_scale: int
+    impact_scale: int
+    breaking_news: bool
 
 
 @dataclasses.dataclass
@@ -140,19 +143,25 @@ class Analysis:
     url: str
     favicon_url: str
     takeaways: list[str]
-    tags: List[str]
+    search_terms: list[str]
+    happy_scale: int
+    impact_scale: int
+    breaking_news: bool
+    source: str
+    pub_date: str
 
     @staticmethod
     def from_llm_analysis(llm_analysis: LlmAnalysis, page_content: PageContent):
-        tags = [tag for tag in llm_analysis.subjects if tag]
-        tags.append("Unhappy" if llm_analysis.unhappy else "Happy")
-        tags.append("Time Sensitive" if llm_analysis.time_sensitive else "Evergreen")
-
         return Analysis(
             _id=page_content._id,
             title=page_content.title,
             url=page_content.url,
             favicon_url=page_content.favicon_url,
             takeaways=llm_analysis.takeaways,
-            tags= tags,
+            search_terms=list(llm_analysis.search_terms),
+            happy_scale=llm_analysis.happy_scale,
+            impact_scale=llm_analysis.impact_scale,
+            breaking_news=llm_analysis.breaking_news,
+            source=page_content.source,
+            pub_date=page_content.pub_date,
         )

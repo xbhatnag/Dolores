@@ -15,6 +15,7 @@ ALL_PROVIDERS = [
     XdaDevelopers,
     OsNews,
     Hackaday,
+    BBC
 ]
 
 

@@ -41,7 +41,10 @@ class Analyzer:
         llm_analysis = LlmAnalysis.model_validate_json(response.content, strict=True)
 
         assert llm_analysis.takeaways, "Takeaways cannot be empty"
-        assert llm_analysis.subjects, "Subjects cannot be empty"
+        assert llm_analysis.search_terms, "Search terms cannot be empty"
+        assert llm_analysis.happy_scale in range(1, 6), "Happy scale must be between 1 and 5"
+        assert llm_analysis.impact_scale in range(1, 6), "Impact scale must be between 1 and 5"
+        assert isinstance(llm_analysis.breaking_news, bool), "Breaking news must be a boolean"
 
         analysis = Analysis.from_llm_analysis(llm_analysis, page_content)
 
@@ -57,7 +60,7 @@ class Analyzer:
                 page_content = PageContent(**page_content_str)
 
                 if self.analysis_collection.find_one({"_id": page_content._id}):
-                    break
+                    continue
 
                 analysis = self.analyze(page_content)
                 self.analysis_collection.insert_one(dataclasses.asdict(analysis))
