@@ -6,7 +6,7 @@ from flask import Flask, jsonify, make_response
 app = Flask(__name__)
 client = MongoClient("mongodb://localhost:27017/")
 db = client["dolores"]
-collection: Collection = db["analyses"]
+metadata_collection: Collection = db["page_metadata"]
 
 
 # Add CORS headers to every response
@@ -19,8 +19,33 @@ def add_cors_headers(response):
 
 
 @app.route("/all", methods=["GET"])
-def get_analyses():
-    return make_response(jsonify(list(collection.find())))
+def get_all():
+    pipeline = [
+        {
+            "$lookup": {
+                "from": "page_content",
+                "localField": "_id",
+                "foreignField": "_id",
+                "as": "temp1",
+            }
+        },
+        {"$unwind": "$temp1"},
+        {"$replaceRoot": {"newRoot": {"$mergeObjects": ["$$ROOT", "$temp1"]}}},
+        {
+            "$lookup": {
+                "from": "page_analysis",
+                "localField": "_id",
+                "foreignField": "_id",
+                "as": "temp2",
+            }
+        },
+        {"$unwind": "$temp2"},
+        {"$replaceRoot": {"newRoot": {"$mergeObjects": ["$$ROOT", "$temp2"]}}},
+        {"$project": {"temp1": 0, "temp2": 0}},
+    ]
+
+    results = list(metadata_collection.aggregate(pipeline))
+    return make_response(jsonify(results))
 
 
 if __name__ == "__main__":

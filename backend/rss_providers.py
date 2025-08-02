@@ -2,12 +2,13 @@ from typing import List
 
 import requests
 import xmltodict
+import html
 
-from structs import RssContent
+from structs import PageMetadata
 
 from pymongo.database import Collection
 from pymongo.errors import BulkWriteError
-from datetime import datetime
+from datetime import datetime, timezone
 
 from threading import Thread
 import logging
@@ -71,14 +72,14 @@ class RssProvider:
         self.thread.daemon = True
         self.thread.start()
 
-    def get_rss(self) -> List[RssContent]:
+    def get_rss(self) -> List[PageMetadata]:
         return []
 
     def rss_loop(self):
         self.logger.info("Starting RSS Loop")
         while True:
             try:
-                all_rss_content: List[RssContent] = self.get_rss()
+                all_rss_content: List[PageMetadata] = self.get_rss()
 
                 # Filter and convert to JSON dicts
                 new_rss_content = [
@@ -88,7 +89,7 @@ class RssProvider:
                     )
                 ]
 
-                self.after = datetime.now()
+                self.after = datetime.now().astimezone(timezone.utc)
 
                 self.logger.info("Read %d RSS articles", len(new_rss_content))
 
@@ -113,7 +114,7 @@ class RssProvider:
             time.sleep(duration)
 
 
-# def read_daring_fireball() -> List[RssContent]:
+# def read_daring_fireball() -> List[PageMetadata]:
 #     xml = get_xml("https://daringfireball.net/feeds/main")
 #     entries = xml["feed"]["entry"]
 #     rss_content = []
@@ -129,7 +130,7 @@ class RssProvider:
 #         assert url
 
 #         rss_content.append(
-#             RssContent(
+#             PageMetadata(
 #                 source="Daring Fireball",
 #                 title=entry["title"],
 #                 tags=[],
@@ -144,21 +145,18 @@ class RssProvider:
 
 
 class TheVerge(RssProvider):
-    def get_rss(self) -> List[RssContent]:
+    def get_rss(self) -> List[PageMetadata]:
         xml = get_xml("https://www.theverge.com/rss/index.xml")
         entries = xml["feed"]["entry"]
         rss_content = []
 
         for entry in entries:
             rss_content.append(
-                RssContent.from_raw(
+                PageMetadata.from_raw(
                     source="The Verge",
                     title=entry["title"]["#text"],
-                    tags=get_categories(entry),
-                    authors=get_authors(entry),
-                    text=entry["content"]["#text"],
                     url=entry["link"]["@href"],
-                    pub_date=entry["published"],
+                    date=entry["published"],
                 )
             )
 
@@ -166,107 +164,92 @@ class TheVerge(RssProvider):
 
 
 class ArsTechnica(RssProvider):
-    def get_rss(self) -> List[RssContent]:
+    def get_rss(self) -> List[PageMetadata]:
         xml = get_xml("https://feeds.arstechnica.com/arstechnica/index")
         entries = xml["rss"]["channel"]["item"]
         rss_content = []
         for entry in entries:
             rss_content.append(
-                RssContent.from_raw(
+                PageMetadata.from_raw(
                     source="Ars Technica",
                     title=entry["title"],
-                    tags=get_categories(entry),
-                    authors=get_authors(entry),
-                    text=entry["content:encoded"],
                     url=entry["link"],
-                    pub_date=entry["pubDate"],
+                    date=entry["pubDate"],
                 )
             )
         return rss_content
 
 
 class Hackaday(RssProvider):
-    def get_rss(self) -> List[RssContent]:
+    def get_rss(self) -> List[PageMetadata]:
         xml = get_xml("https://hackaday.com/blog/feed/")
         entries = xml["rss"]["channel"]["item"]
         rss_content = []
         for entry in entries:
             rss_content.append(
-                RssContent.from_raw(
+                PageMetadata.from_raw(
                     source="Hackaday",
                     title=entry["title"],
-                    tags=get_categories(entry),
-                    authors=get_authors(entry),
-                    text=entry["content:encoded"],
                     url=entry["link"],
-                    pub_date=entry["pubDate"],
+                    date=entry["pubDate"],
                 )
             )
         return rss_content
 
 
 class Engadget(RssProvider):
-    def get_rss(self) -> List[RssContent]:
+    def get_rss(self) -> List[PageMetadata]:
         xml = get_xml("https://www.engadget.com/rss-full.xml")
         entries = xml["rss"]["channel"]["item"]
         rss_content = []
         for entry in entries:
             rss_content.append(
-                RssContent.from_raw(
+                PageMetadata.from_raw(
                     source="Engadget",
                     title=entry["title"],
-                    tags=get_categories(entry),
-                    authors=get_authors(entry),
-                    text=entry["description"]["#text"],
                     url=entry["link"],
-                    pub_date=entry["pubDate"],
+                    date=entry["pubDate"],
                 )
             )
         return rss_content
 
 
 class MitTechReview(RssProvider):
-    def get_rss(self) -> List[RssContent]:
+    def get_rss(self) -> List[PageMetadata]:
         xml = get_xml("https://www.technologyreview.com/feed/")
         entries = xml["rss"]["channel"]["item"]
         rss_content = []
         for entry in entries:
             rss_content.append(
-                RssContent.from_raw(
+                PageMetadata.from_raw(
                     source="MIT Technology Review",
                     title=entry["title"],
-                    tags=get_categories(entry),
-                    authors=get_authors(entry),
-                    text=entry["content:encoded"],
                     url=entry["link"],
-                    pub_date=entry["pubDate"],
+                    date=entry["pubDate"],
                 )
             )
         return rss_content
 
 
 class OsNews(RssProvider):
-    def get_rss(self) -> List[RssContent]:
+    def get_rss(self) -> List[PageMetadata]:
         xml = get_xml("http://www.osnews.com/files/recent.xml")
         entries = xml["rss"]["channel"]["item"]
         rss_content = []
         for entry in entries:
             rss_content.append(
-                RssContent.from_raw(
+                PageMetadata.from_raw(
                     source="OS News",
                     title=entry["title"],
-                    tags=get_categories(entry),
-                    authors=get_authors(entry),
-                    text=entry["description"],
                     url=entry["link"],
-                    pub_date=entry["pubDate"],
+                    date=entry["pubDate"],
                 )
             )
         return rss_content
 
 
 class TechRadar(RssProvider):
-    def get_rss(self) -> List[RssContent]:
+    def get_rss(self) -> List[PageMetadata]:
         xml = get_xml("https://www.techradar.com/rss")
         entries = xml["rss"]["channel"]["item"]
         rss_content = []
@@ -277,53 +260,44 @@ class TechRadar(RssProvider):
                 continue
 
             rss_content.append(
-                RssContent.from_raw(
+                PageMetadata.from_raw(
                     source="TechRadar",
                     title=entry["title"],
-                    tags=get_categories(entry),
-                    authors=get_authors(entry),
-                    text=entry["content:encoded"],
                     url=entry["link"],
-                    pub_date=entry["pubDate"],
+                    date=entry["pubDate"],
                 )
             )
         return rss_content
 
 
 class XdaDevelopers(RssProvider):
-    def get_rss(self) -> List[RssContent]:
+    def get_rss(self) -> List[PageMetadata]:
         xml = get_xml("https://www.xda-developers.com/feed/")
         entries = xml["rss"]["channel"]["item"]
         rss_content = []
         for entry in entries:
             rss_content.append(
-                RssContent.from_raw(
+                PageMetadata.from_raw(
                     source="XDA Developers",
                     title=entry["title"],
-                    tags=get_categories(entry),
-                    authors=get_authors(entry),
-                    text=entry["content:encoded"],
                     url=entry["link"],
-                    pub_date=entry["pubDate"],
+                    date=entry["pubDate"],
                 )
             )
         return rss_content
 
 class BBC(RssProvider):
-    def get_rss(self) -> List[RssContent]:
+    def get_rss(self) -> List[PageMetadata]:
         xml = get_xml("http://feeds.bbci.co.uk/news/rss.xml")
         entries = xml["rss"]["channel"]["item"]
         rss_content = []
         for entry in entries:
             rss_content.append(
-                RssContent.from_raw(
+                PageMetadata.from_raw(
                     source="BBC",
                     title=entry["title"],
-                    tags=[],
-                    authors=[],
-                    text=entry["description"],
                     url=entry["link"],
-                    pub_date=entry["pubDate"],
+                    date=entry["pubDate"],
                 )
             )
         return rss_content

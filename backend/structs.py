@@ -1,12 +1,10 @@
 import dataclasses
 import logging
 from datetime import datetime, timezone
-from typing import List
-
-import bs4
 from dateutil.parser import parse as parse_date
 from playwright.sync_api import Page, sync_playwright
 from pydantic import BaseModel
+import html
 
 
 def get_favicon_url(page) -> str:
@@ -29,73 +27,51 @@ def get_favicon_url(page) -> str:
     )
 
 
-def get_text_by_classname(page: Page, classname: str) -> str:
-    elements = page.locator(f"{classname}")
+def get_text_by_classname(page: Page) -> str:
+    base = page.locator("p")
+
+    if page.get_by_role("article"):
+        article = page.get_by_role("article")
+        if article.get_by_role("paragraph"):
+            base = page.get_by_role("paragraph")
 
     all_text = []
-    for i in range(elements.count()):
-        all_text.append(elements.nth(i).inner_text())
-    all_text = "\n\n".join(all_text)
-    return all_text.strip()
+    for match in base.all():
+        text = match.text_content()
+        all_text.append(text)
 
-
-def strip_html(html: str) -> str:
-    # Remove HTML tags and decode HTML entities
-    soup = bs4.BeautifulSoup(html, features="html.parser")
-    text = soup.get_text()
-    return text.strip()
+    return "\n\n".join(all_text)
 
 
 @dataclasses.dataclass
-class RssContent:
+class PageMetadata:
     _id: str
     source: str
     title: str
-    authors: List[str]
-    tags: List[str]
-    text: str
     url: str
-    pub_date: str
+    date: str
 
     @staticmethod
     def from_raw(
         url: str,
         source: str,
         title: str,
-        authors: List[str],
-        tags: List[str],
-        text: str,
-        pub_date: str,
+        date: str,
     ):
-        _id = url
-
-        # Fix the title
-        title = strip_html(title)
-
-        # Fix the date
-        pub_date = parse_date(pub_date).astimezone(timezone.utc).isoformat()
-
-        # Fix the text
-        text = strip_html(text)
-
+        date = parse_date(date).astimezone(timezone.utc).isoformat()
         source = source
-        authors = authors
-        tags = tags
         url = url
 
-        return RssContent(
-            _id=_id,
+        return PageMetadata(
+            _id=url,
             source=source,
             title=title,
-            authors=authors,
-            tags=tags,
-            text=text,
             url=url,
-            pub_date=pub_date,
+            date=date,
         )
 
     def published_after(self, cmp_date: datetime) -> bool:
-        return datetime.fromisoformat(self.pub_date) > cmp_date
+        return datetime.fromisoformat(self.date) > cmp_date
 
 
 @dataclasses.dataclass
@@ -106,62 +82,50 @@ class PageContent:
     url: str
     text: str
     favicon_url: str
-    pub_date: str
+    date: str
 
     @staticmethod
-    def from_rss(rss: RssContent):
-        logging.info("Parsing %s", rss.url)
-        try:
-            with sync_playwright() as p:
-                browser = p.firefox.launch()
-                page = browser.new_page()
-                page.goto(rss.url)
-                favicon_url = get_favicon_url(page)
-                page_text: str = get_text_by_classname(page, "p")
-                page_content = PageContent(
-                    rss._id, rss.source, rss.title, rss.url, page_text, favicon_url, rss.pub_date
-                )
-                logging.info("Parse complete: %s", rss.url)
-                return page_content
-        except Exception as e:
-            logging.error("Failed to parse %s: %s", rss.url, e)
-            return None
+    def from_metadata(metadata: PageMetadata):
+        logging.info("Parsing %s", metadata.url)
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page()
+            try:
+                page.goto(metadata.url)
+            except Exception as e:
+                logging.error("Failed to parse %s: %s", metadata.url, e)
+                return None
+
+            favicon_url = get_favicon_url(page)
+            page_text: str = get_text_by_classname(page)
+            page_content = PageContent(
+                metadata._id,
+                metadata.source,
+                metadata.title,
+                metadata.url,
+                page_text,
+                favicon_url,
+                metadata.date,
+            )
+            logging.info("Parse complete: %s", metadata.url)
+            return page_content
 
 
 class LlmAnalysis(BaseModel):
     takeaways: list[str]
     search_terms: set[str]
-    happy_scale: int
-    impact_scale: int
-    breaking_news: bool
 
 
 @dataclasses.dataclass
 class Analysis:
     _id: str
-    title: str
-    url: str
-    favicon_url: str
     takeaways: list[str]
     search_terms: list[str]
-    happy_scale: int
-    impact_scale: int
-    breaking_news: bool
-    source: str
-    pub_date: str
 
     @staticmethod
     def from_llm_analysis(llm_analysis: LlmAnalysis, page_content: PageContent):
         return Analysis(
             _id=page_content._id,
-            title=page_content.title,
-            url=page_content.url,
-            favicon_url=page_content.favicon_url,
             takeaways=llm_analysis.takeaways,
             search_terms=list(llm_analysis.search_terms),
-            happy_scale=llm_analysis.happy_scale,
-            impact_scale=llm_analysis.impact_scale,
-            breaking_news=llm_analysis.breaking_news,
-            source=page_content.source,
-            pub_date=page_content.pub_date,
         )

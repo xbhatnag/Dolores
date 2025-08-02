@@ -10,12 +10,12 @@ ALL_PROVIDERS = [
     TheVerge,
     ArsTechnica,
     Engadget,
-    TechRadar,
+    # TechRadar, // Regularly can't load pages
     MitTechReview,
     XdaDevelopers,
     OsNews,
     Hackaday,
-    BBC
+    # BBC
 ]
 
 
@@ -35,7 +35,7 @@ def main():
     # Connect to MongoDB
     client = MongoClient("mongodb://localhost:27017/")
     db = client.dolores
-    collection = db.rss
+    collection = db.page_metadata
 
     # Set the time after which to fetch news
     after = now() - timedelta(days=1)

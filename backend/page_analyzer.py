@@ -11,15 +11,15 @@ import dataclasses
 
 
 class Analyzer:
-    page_collection: Collection
+    content_collection: Collection
     analysis_collection: Collection
     model: lms.LLM
     system_prompt: str
 
     def __init__(
-        self, page_collection: Collection, analysis_collection: Collection
+        self, content_collection: Collection, analysis_collection: Collection
     ) -> None:
-        self.page_collection = page_collection
+        self.content_collection = content_collection
         self.analysis_collection = analysis_collection
         self.model = lms.llm()
         with open("./analysis_prompt.md") as f:
@@ -28,8 +28,8 @@ class Analyzer:
     def analyze(self, page_content: PageContent) -> Analysis:
         logging.info('Analyzing: "%s"', page_content.title)
 
-        prompt = f"""{page_content.title}
-{page_content.text}
+        prompt = f"""Title: {page_content.title}
+Content: {page_content.text}
 """
         chat = lms.Chat(
             initial_prompt=self.system_prompt,
@@ -42,13 +42,10 @@ class Analyzer:
 
         assert llm_analysis.takeaways, "Takeaways cannot be empty"
         assert llm_analysis.search_terms, "Search terms cannot be empty"
-        assert llm_analysis.happy_scale in range(1, 6), "Happy scale must be between 1 and 5"
-        assert llm_analysis.impact_scale in range(1, 6), "Impact scale must be between 1 and 5"
-        assert isinstance(llm_analysis.breaking_news, bool), "Breaking news must be a boolean"
 
         analysis = Analysis.from_llm_analysis(llm_analysis, page_content)
 
-        logging.info("Analysis complete: %s", analysis.title)
+        logging.info("Analysis complete: %s", page_content.title)
 
         return analysis
 
@@ -56,7 +53,7 @@ class Analyzer:
         logging.info("Starting Analysis Loop")
         while True:
             # Analyze page content that's not part of a story
-            for page_content_str in self.page_collection.find():
+            for page_content_str in self.content_collection.find():
                 page_content = PageContent(**page_content_str)
 
                 if self.analysis_collection.find_one({"_id": page_content._id}):
@@ -83,10 +80,10 @@ def main():
     # Connect to MongoDB
     client = MongoClient("mongodb://localhost:27017/")
     db = client.dolores
-    page_collection = db.pages
-    analysis_collection = db.analyses
+    content_collection = db.page_content
+    analysis_collection = db.page_analysis
 
-    analyzer = Analyzer(page_collection, analysis_collection)
+    analyzer = Analyzer(content_collection, analysis_collection)
     analyzer.loop()
 
 
