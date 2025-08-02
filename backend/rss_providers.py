@@ -15,6 +15,7 @@ import logging
 import random
 import time
 import dataclasses
+from bs4 import BeautifulSoup
 
 
 def get_authors(entry: dict) -> List[str]:
@@ -79,23 +80,23 @@ class RssProvider:
         self.logger.info("Starting RSS Loop")
         while True:
             try:
-                all_rss_content: List[PageMetadata] = self.get_rss()
+                all_metadata: List[PageMetadata] = self.get_rss()
 
                 # Filter and convert to JSON dicts
-                new_rss_content = [
+                new_metadata = [
                     dataclasses.asdict(a)
                     for a in filter(
-                        lambda a: a.published_after(self.after), all_rss_content
+                        lambda a: a.published_after(self.after), all_metadata
                     )
                 ]
 
                 self.after = datetime.now().astimezone(timezone.utc)
 
-                self.logger.info("Read %d RSS articles", len(new_rss_content))
+                self.logger.info("Read %d RSS articles", len(new_metadata))
 
                 # Commit to MongoDB
-                if new_rss_content:
-                    self.collection.insert_many(new_rss_content, ordered=False)
+                if new_metadata:
+                    self.collection.insert_many(new_metadata, ordered=False)
             except BulkWriteError as bwe:
                 for error in bwe.details["writeErrors"]:
                     if error["code"] == 11000:
@@ -114,10 +115,210 @@ class RssProvider:
             time.sleep(duration)
 
 
+
+class RedditTech(RssProvider):
+    def get_rss(self) -> List[PageMetadata]:
+        xml = get_xml("https://www.reddit.com/r/technology.rss")
+        entries = xml["feed"]["entry"]
+        metadata = []
+
+        for entry in entries:
+            content = entry["content"]["#text"]
+            soup = BeautifulSoup(content, features="html.parser")
+            links = soup.find_all("a", href=True)
+
+            # The first part is the title
+            title = entry["title"]
+            title_parts = title.split("|")
+            title = title_parts[0]
+
+            for link in links:
+                if "[link]" in link.get_text():
+                    metadata.append(
+                        PageMetadata.from_raw(
+                            source="Reddit",
+                            title=title,
+                            url=link["href"],
+                            date=entry["published"],
+                            discussion_url=entry["link"]["@href"],
+                        )
+                    )
+        return metadata
+
+
+class TheVerge(RssProvider):
+    def get_rss(self) -> List[PageMetadata]:
+        xml = get_xml("https://www.theverge.com/rss/index.xml")
+        entries = xml["feed"]["entry"]
+        metadata = []
+
+        for entry in entries:
+            metadata.append(
+                PageMetadata.from_raw(
+                    source="The Verge",
+                    title=entry["title"]["#text"],
+                    url=entry["link"]["@href"],
+                    date=entry["published"],
+                    discussion_url=entry["link"]["@href"] + "#comments",
+                )
+            )
+
+        return metadata
+
+class Hackaday(RssProvider):
+    def get_rss(self) -> List[PageMetadata]:
+        xml = get_xml("https://hackaday.com/blog/feed/")
+        entries = xml["rss"]["channel"]["item"]
+        metadata = []
+        for entry in entries:
+            metadata.append(
+                PageMetadata.from_raw(
+                    source="Hackaday",
+                    title=entry["title"],
+                    url=entry["link"],
+                    date=entry["pubDate"],
+                    discussion_url=entry["link"] + "#comments",
+                )
+            )
+        return metadata
+
+
+class XdaDevelopers(RssProvider):
+    def get_rss(self) -> List[PageMetadata]:
+        xml = get_xml("https://www.xda-developers.com/feed/")
+        entries = xml["rss"]["channel"]["item"]
+        metadata = []
+        for entry in entries:
+            metadata.append(
+                PageMetadata.from_raw(
+                    source="XDA Developers",
+                    title=entry["title"],
+                    url=entry["link"],
+                    date=entry["pubDate"],
+                    discussion_url=entry["link"] + "#threads",
+                )
+            )
+        return metadata
+
+# class ArsTechnica(RssProvider):
+#     def get_rss(self) -> List[PageMetadata]:
+#         xml = get_xml("https://feeds.arstechnica.com/arstechnica/index")
+#         entries = xml["rss"]["channel"]["item"]
+#         metadata = []
+#         for entry in entries:
+#             metadata.append(
+#                 PageMetadata.from_raw(
+#                     source="Ars Technica",
+#                     title=entry["title"],
+#                     url=entry["link"],
+#                     date=entry["pubDate"],
+#                     discussion_url="",
+#                 )
+#             )
+#         return metadata
+
+
+
+
+# class Engadget(RssProvider):
+#     def get_rss(self) -> List[PageMetadata]:
+#         xml = get_xml("https://www.engadget.com/rss-full.xml")
+#         entries = xml["rss"]["channel"]["item"]
+#         metadata = []
+#         for entry in entries:
+#             metadata.append(
+#                 PageMetadata.from_raw(
+#                     source="Engadget",
+#                     title=entry["title"],
+#                     url=entry["link"],
+#                     date=entry["pubDate"],
+#                     discussion_url="",
+#                 )
+#             )
+#         return metadata
+
+
+# class MitTechReview(RssProvider):
+#     def get_rss(self) -> List[PageMetadata]:
+#         xml = get_xml("https://www.technologyreview.com/feed/")
+#         entries = xml["rss"]["channel"]["item"]
+#         metadata = []
+#         for entry in entries:
+#             metadata.append(
+#                 PageMetadata.from_raw(
+#                     source="MIT Technology Review",
+#                     title=entry["title"],
+#                     url=entry["link"],
+#                     date=entry["pubDate"],
+#                     discussion_url="",
+#                 )
+#             )
+#         return metadata
+
+
+# class OsNews(RssProvider):
+#     def get_rss(self) -> List[PageMetadata]:
+#         xml = get_xml("http://www.osnews.com/files/recent.xml")
+#         entries = xml["rss"]["channel"]["item"]
+#         metadata = []
+#         for entry in entries:
+#             metadata.append(
+#                 PageMetadata.from_raw(
+#                     source="OS News",
+#                     title=entry["title"],
+#                     url=entry["link"],
+#                     date=entry["pubDate"],
+#                     discussion_url="",
+#                 )
+#             )
+#         return metadata
+
+
+# class TechRadar(RssProvider):
+#     def get_rss(self) -> List[PageMetadata]:
+#         xml = get_xml("https://www.techradar.com/rss")
+#         entries = xml["rss"]["channel"]["item"]
+#         metadata = []
+#         for entry in entries:
+#             if "Wordle" in entry["title"]:
+#                 continue
+#             if "NYT" in entry["title"]:
+#                 continue
+
+#             metadata.append(
+#                 PageMetadata.from_raw(
+#                     source="TechRadar",
+#                     title=entry["title"],
+#                     url=entry["link"],
+#                     date=entry["pubDate"],
+#                     discussion_url="",
+#                 )
+#             )
+#         return metadata
+
+
+# class BBC(RssProvider):
+#     def get_rss(self) -> List[PageMetadata]:
+#         xml = get_xml("http://feeds.bbci.co.uk/news/rss.xml")
+#         entries = xml["rss"]["channel"]["item"]
+#         metadata = []
+#         for entry in entries:
+#             metadata.append(
+#                 PageMetadata.from_raw(
+#                     source="BBC",
+#                     title=entry["title"],
+#                     url=entry["link"],
+#                     date=entry["pubDate"],
+#                     discussion_url="",
+#                 )
+#             )
+#         return metadata
+
+
 # def read_daring_fireball() -> List[PageMetadata]:
 #     xml = get_xml("https://daringfireball.net/feeds/main")
 #     entries = xml["feed"]["entry"]
-#     rss_content = []
+#     metadata = []
 #     for entry in entries:
 #         # We want Gruber's pieces, not others'
 #         if "sponsors" in entry["id"] or "linked" in entry["id"]:
@@ -129,7 +330,7 @@ class RssProvider:
 #                 url = link["@href"]
 #         assert url
 
-#         rss_content.append(
+#         metadata.append(
 #             PageMetadata(
 #                 source="Daring Fireball",
 #                 title=entry["title"],
@@ -141,163 +342,4 @@ class RssProvider:
 #             )
 #         )
 
-#     return rss_content
-
-
-class TheVerge(RssProvider):
-    def get_rss(self) -> List[PageMetadata]:
-        xml = get_xml("https://www.theverge.com/rss/index.xml")
-        entries = xml["feed"]["entry"]
-        rss_content = []
-
-        for entry in entries:
-            rss_content.append(
-                PageMetadata.from_raw(
-                    source="The Verge",
-                    title=entry["title"]["#text"],
-                    url=entry["link"]["@href"],
-                    date=entry["published"],
-                )
-            )
-
-        return rss_content
-
-
-class ArsTechnica(RssProvider):
-    def get_rss(self) -> List[PageMetadata]:
-        xml = get_xml("https://feeds.arstechnica.com/arstechnica/index")
-        entries = xml["rss"]["channel"]["item"]
-        rss_content = []
-        for entry in entries:
-            rss_content.append(
-                PageMetadata.from_raw(
-                    source="Ars Technica",
-                    title=entry["title"],
-                    url=entry["link"],
-                    date=entry["pubDate"],
-                )
-            )
-        return rss_content
-
-
-class Hackaday(RssProvider):
-    def get_rss(self) -> List[PageMetadata]:
-        xml = get_xml("https://hackaday.com/blog/feed/")
-        entries = xml["rss"]["channel"]["item"]
-        rss_content = []
-        for entry in entries:
-            rss_content.append(
-                PageMetadata.from_raw(
-                    source="Hackaday",
-                    title=entry["title"],
-                    url=entry["link"],
-                    date=entry["pubDate"],
-                )
-            )
-        return rss_content
-
-
-class Engadget(RssProvider):
-    def get_rss(self) -> List[PageMetadata]:
-        xml = get_xml("https://www.engadget.com/rss-full.xml")
-        entries = xml["rss"]["channel"]["item"]
-        rss_content = []
-        for entry in entries:
-            rss_content.append(
-                PageMetadata.from_raw(
-                    source="Engadget",
-                    title=entry["title"],
-                    url=entry["link"],
-                    date=entry["pubDate"],
-                )
-            )
-        return rss_content
-
-
-class MitTechReview(RssProvider):
-    def get_rss(self) -> List[PageMetadata]:
-        xml = get_xml("https://www.technologyreview.com/feed/")
-        entries = xml["rss"]["channel"]["item"]
-        rss_content = []
-        for entry in entries:
-            rss_content.append(
-                PageMetadata.from_raw(
-                    source="MIT Technology Review",
-                    title=entry["title"],
-                    url=entry["link"],
-                    date=entry["pubDate"],
-                )
-            )
-        return rss_content
-
-
-class OsNews(RssProvider):
-    def get_rss(self) -> List[PageMetadata]:
-        xml = get_xml("http://www.osnews.com/files/recent.xml")
-        entries = xml["rss"]["channel"]["item"]
-        rss_content = []
-        for entry in entries:
-            rss_content.append(
-                PageMetadata.from_raw(
-                    source="OS News",
-                    title=entry["title"],
-                    url=entry["link"],
-                    date=entry["pubDate"],
-                )
-            )
-        return rss_content
-
-
-class TechRadar(RssProvider):
-    def get_rss(self) -> List[PageMetadata]:
-        xml = get_xml("https://www.techradar.com/rss")
-        entries = xml["rss"]["channel"]["item"]
-        rss_content = []
-        for entry in entries:
-            if "Wordle" in entry["title"]:
-                continue
-            if "NYT" in entry["title"]:
-                continue
-
-            rss_content.append(
-                PageMetadata.from_raw(
-                    source="TechRadar",
-                    title=entry["title"],
-                    url=entry["link"],
-                    date=entry["pubDate"],
-                )
-            )
-        return rss_content
-
-
-class XdaDevelopers(RssProvider):
-    def get_rss(self) -> List[PageMetadata]:
-        xml = get_xml("https://www.xda-developers.com/feed/")
-        entries = xml["rss"]["channel"]["item"]
-        rss_content = []
-        for entry in entries:
-            rss_content.append(
-                PageMetadata.from_raw(
-                    source="XDA Developers",
-                    title=entry["title"],
-                    url=entry["link"],
-                    date=entry["pubDate"],
-                )
-            )
-        return rss_content
-
-class BBC(RssProvider):
-    def get_rss(self) -> List[PageMetadata]:
-        xml = get_xml("http://feeds.bbci.co.uk/news/rss.xml")
-        entries = xml["rss"]["channel"]["item"]
-        rss_content = []
-        for entry in entries:
-            rss_content.append(
-                PageMetadata.from_raw(
-                    source="BBC",
-                    title=entry["title"],
-                    url=entry["link"],
-                    date=entry["pubDate"],
-                )
-            )
-        return rss_content
+#     return metadata

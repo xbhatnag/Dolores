@@ -36,6 +36,9 @@ def classify(title: str, url_str: str) -> HNType:
     if title.startswith("Show HN"):
         return HNType.Project
 
+    if title.startswith("Launch HN"):
+        return HNType.Project
+
     if not url.path:
         # Most likely some kind of project.
         # Only those are at the root.
@@ -81,6 +84,10 @@ def classify(title: str, url_str: str) -> HNType:
     if isinstance(author, bs4.Tag):
         return HNType.Blog
 
+    article_content = html_page.find("meta", {"content": "article"})
+    if isinstance(article_content, bs4.Tag):
+        return HNType.Blog
+
     return HNType.Unknown
 
 
@@ -110,17 +117,19 @@ def hn_loop(collection: Collection, global_ids: set[int]):
             title = metadata["title"]
             url = metadata["url"]
             date = datetime.fromtimestamp(metadata["time"]).isoformat()
+            discussion_url = f"https://news.ycombinator.com/item?id={id}"
 
             page_type = classify(title, url)
 
             if page_type == HNType.Blog:
-                metadata = PageMetadata.from_raw(url, "Hacker News", title, date)
+                metadata = PageMetadata.from_raw(
+                    url, "Hacker News", title, date, discussion_url
+                )
                 try:
                     collection.insert_one(dataclasses.asdict(metadata))
                     logging.info("✅ Inserted: %s", title)
                 except:
                     logging.error("❗️ Could not insert: %s", title)
-                    continue
             else:
                 logging.info("❌ %s: %s", page_type, title)
 

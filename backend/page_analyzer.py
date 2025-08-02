@@ -8,28 +8,44 @@ import lmstudio as lms
 import random
 import time
 import dataclasses
+import json
+
+pipeline = [
+    {
+        "$lookup": {
+            "from": "page_content",
+            "localField": "_id",
+            "foreignField": "_id",
+            "as": "temp1",
+        }
+    },
+    {"$unwind": "$temp1"},
+    {"$replaceRoot": {"newRoot": {"$mergeObjects": ["$$ROOT", "$temp1"]}}},
+]
 
 
 class Analyzer:
-    content_collection: Collection
+    metadata_collection: Collection
     analysis_collection: Collection
     model: lms.LLM
     system_prompt: str
 
     def __init__(
-        self, content_collection: Collection, analysis_collection: Collection
+        self, metadata_collection: Collection, analysis_collection: Collection
     ) -> None:
-        self.content_collection = content_collection
+        self.metadata_collection = metadata_collection
         self.analysis_collection = analysis_collection
         self.model = lms.llm()
         with open("./analysis_prompt.md") as f:
             self.system_prompt = f.read()
 
-    def analyze(self, page_content: PageContent) -> Analysis:
-        logging.info('Analyzing: "%s"', page_content.title)
+    def analyze(self, document: dict) -> Analysis:
+        title: str = document["title"]
+        text: str = document["text"]
+        logging.info('Analyzing: "%s"', title)
 
-        prompt = f"""Title: {page_content.title}
-Content: {page_content.text}
+        prompt = f"""Title: {title}
+Content: {text}
 """
         chat = lms.Chat(
             initial_prompt=self.system_prompt,
@@ -40,12 +56,15 @@ Content: {page_content.text}
 
         llm_analysis = LlmAnalysis.model_validate_json(response.content, strict=True)
 
-        assert llm_analysis.takeaways, "Takeaways cannot be empty"
-        assert llm_analysis.search_terms, "Search terms cannot be empty"
+        # Remove terms that don't exist in the original text.
+        # The AI refuses to follow the rules sometimes.
+        llm_analysis.search_terms = set(
+            filter(lambda t: t.lower() in text.lower(), llm_analysis.search_terms)
+        )
 
-        analysis = Analysis.from_llm_analysis(llm_analysis, page_content)
+        analysis = Analysis.from_llm_analysis(document["_id"], llm_analysis)
 
-        logging.info("Analysis complete: %s", page_content.title)
+        logging.info("Analysis complete: %s", title)
 
         return analysis
 
@@ -53,13 +72,12 @@ Content: {page_content.text}
         logging.info("Starting Analysis Loop")
         while True:
             # Analyze page content that's not part of a story
-            for page_content_str in self.content_collection.find():
-                page_content = PageContent(**page_content_str)
-
-                if self.analysis_collection.find_one({"_id": page_content._id}):
+            article_documents = self.metadata_collection.aggregate(pipeline)
+            for document in article_documents:
+                if self.analysis_collection.find_one({"_id": document["_id"]}):
                     continue
 
-                analysis = self.analyze(page_content)
+                analysis = self.analyze(document)
                 self.analysis_collection.insert_one(dataclasses.asdict(analysis))
 
             # Sleep for 2 to 5 minutes
@@ -80,10 +98,10 @@ def main():
     # Connect to MongoDB
     client = MongoClient("mongodb://localhost:27017/")
     db = client.dolores
-    content_collection = db.page_content
+    metadata_collection = db.page_metadata
     analysis_collection = db.page_analysis
 
-    analyzer = Analyzer(content_collection, analysis_collection)
+    analyzer = Analyzer(metadata_collection, analysis_collection)
     analyzer.loop()
 
 

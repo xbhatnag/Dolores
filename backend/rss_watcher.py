@@ -7,14 +7,15 @@ from rss_providers import *
 from pymongo import MongoClient
 
 ALL_PROVIDERS = [
+    RedditTech,
     TheVerge,
-    ArsTechnica,
-    Engadget,
-    # TechRadar, // Regularly can't load pages
-    MitTechReview,
-    XdaDevelopers,
-    OsNews,
     Hackaday,
+    XdaDevelopers,
+    # ArsTechnica,
+    # Engadget,
+    # TechRadar, // Regularly can't load pages
+    # MitTechReview,
+    # OsNews,
     # BBC
 ]
 

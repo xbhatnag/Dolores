@@ -29,6 +29,8 @@ Rules:
 * Balance precision with conciseness. You want to be as descriptive as possible in as few words as possible.
 * Prefer acronyms.
 * Do not repeat yourself.
+* Only use words that are in the article text.
+* If the rules cannot be followed, you may return no search terms.
 
 Here are some example search terms:
 * an article about how AI deepfakes of Taylor Swift created with Midjourney are spreading on Twitter should return the search terms ["Taylor Swift", "Twitter", "Midjourney", "AI deepfakes"].

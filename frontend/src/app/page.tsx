@@ -1,6 +1,5 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
 
 interface Article {
   _id: string,
@@ -11,6 +10,8 @@ interface Article {
   search_terms: Array<string>,
   source: string,
   date: string,
+  text: string,
+  discussion_url: string
 }
 
 function sleep(ms: number): Promise<void> {
@@ -21,10 +22,10 @@ const App = () => {
   // State to hold the news events, initially an empty array
   const [articles, setArticles] = useState<Array<Article>>([]);
   const [selectedArticle, setSelectedArticle] = useState<string | null>(null);
-  const [readStories, setReadStories] = useState<Array<string>>([])
-  const [input, setInput] = useState<Map<string, string>>(new Map());
+  const [readArticles, setReadArticles] = useState<Array<string>>([])
   const [filter, setFilter] = useState<string>("");
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [onlyRead, setOnlyRead] = useState(false);
 
   useEffect(() => {
     // Set up an interval to update the currentTime state every second
@@ -102,7 +103,6 @@ const App = () => {
 
   const selectArticle = (article: Article) => {
     setSelectedArticle(article._id);
-    setReadStories(prevReadStories => [article._id, ...prevReadStories])
   }
 
   const maybeShadow = (article: Article) => {
@@ -113,55 +113,88 @@ const App = () => {
     }
   }
 
-  const ask = async () => {
-    if (selectedArticle == null) {
-      return;
-    }
-    const query = input.get(selectedArticle)
-    if (query == null) {
-      return;
-    }
-    console.log("Asking \"" + query + "\"")
-    const ask_url = url + "/ask?id=" + selectedArticle + "&q=" + query
-    const response = await fetch(ask_url, {
+  const clear = async () => {
+    const clear_url = url + "/clear"
+    await fetch(clear_url, {
+      method: 'POST',
       headers: {
         'Accept': 'application/json'
       }
     });
-    console.log(await response.text())
-  }
-
-  const onEnterPressed = (e: any) => {
-    if (e.key == "Enter") {
-      ask();
-    }
-  }
-
-  const onInputChange = (e: any) => {
-    if (selectedArticle == null) {
-      return;
-    }
-    var new_input = input.set(selectedArticle, e.target.value);
-    setInput(new_input);
+    setArticles([]);
+    setReadArticles([]);
+    setSelectedArticle(null);
   }
 
   const shouldIncludeArticle = (article: Article) => {
-    if (filter && (!article.source.toLowerCase().includes(filter.toLowerCase()) && !article.search_terms.some((t) => t.toLowerCase().includes(filter.toLowerCase())))) {
+    if (filter && (!article.source.toLowerCase().includes(filter.toLowerCase()) && !article.search_terms.some((t) => t.toLowerCase().includes(filter.toLowerCase())) && !article.url.includes(filter.toLowerCase()) && !article.title.includes(filter.toLowerCase()))) {
       return false;
     }
 
-    return true;
+    if (onlyRead) {
+      return readArticles.includes(article._id);
+    }
+
+    return !readArticles.includes(article._id);
+  }
+
+  const findSentenceWithPhrase = (text: string, searchPhrase: string): string | null => {
+    // Check for invalid input to avoid unnecessary processing
+    if (!text || !searchPhrase) {
+      return null;
+    }
+
+    // Split the text into an array of sentences.
+    // The regular expression `/[.?!]|\n|\r/` now splits the string by a period, question mark,
+    // exclamation point, or a newline/carriage return character.
+    const sentences = text.split(/[.?!]|\n|\r/);
+
+    // Iterate over each sentence to find the one that includes the search phrase.
+    for (const sentence of sentences) {
+      // Check if the current sentence contains the search phrase, ignoring case differences.
+      // We convert both the sentence and the search phrase to lowercase for a case-insensitive match.
+      if (sentence.toLowerCase().includes(searchPhrase.toLowerCase())) {
+        // If a match is found, return the sentence after trimming any leading/trailing whitespace.
+        return sentence.trim();
+      }
+    }
+
+    // If no sentence contains the search phrase after checking all of them, return null.
+    return null;
+  };
+
+  const deselectArticle = () => {
+    if (!selectedArticle) {
+      return;
+    }
+    setReadArticles(prevReadArticles => [selectedArticle, ...prevReadArticles])
+    setSelectedArticle(null)
+  }
+
+  const markAllRead = () => {
+    const readArticles = articles.map((a) => a._id)
+    setReadArticles(readArticles)
+  }
+
+  const unreadArticles = () => {
+    return articles.toReversed().filter(s => shouldIncludeArticle(s));
   }
 
   const storyList = () => (
-    <div className='w-[45%]'>
-      {articles.toReversed().filter(s => shouldIncludeArticle(s)).map((s) => (
+    <div className='w-[100%] 2xl:w-[60%] flex flex-col align-middle'>
+      <center className='mb-10'>
+        Have you ever seen anything so full of splendor?
+      </center>
+      {unreadArticles().map((s) => (
         <div key={s._id} className={`mb-3 p-3 article ${maybeShadow(s)}`}>
           <div onClick={() => { selectArticle(s) }}>
             <div className="flex text-gray-800 text-xl items-center gap-2">
               <div className="text-sm w-12 shrink-0">{relativeTime(s.date)}</div>
               <a href={s.url} target="_blank" className="shrink-0 mr-3">
                 <img src={s.favicon_url} className="h-5 w-5" />
+              </a>
+              <a href={s.discussion_url} target="_blank" className="shrink-0 mr-3 text-xs">
+                💬
               </a>
               <div>{s.title}</div>
             </div>
@@ -175,14 +208,13 @@ const App = () => {
             </ul>
             <div className='flex gap-2 mt-2 mb-2 overflow-scroll'>
               {s.search_terms.map((tag) => (
-                <a href={`https://google.com/search?q=${tag}`} target='_blank'>
-                  <div className="text-gray-600 mr-2 bg-gray-100 rounded-full pl-2 pr-2 whitespace-nowrap">
+                <a key={`${tag}`} href={`https://google.com/search?q=${tag}`} target='_blank'>
+                  <div className="text-gray-600 mr-2 bg-gray-100 rounded-full pl-2 pr-2 whitespace-nowrap" title={findSentenceWithPhrase(s.text, tag)}>
                     {tag}
                   </div>
                 </a>
               ))}
             </div>
-            <input className="outline-1 p-2 rounded-full text-black bg-gray-100 mt-2" placeholder="Ask a question..." onKeyDown={onEnterPressed} onChange={onInputChange} autoFocus></input>
           </div>)}
         </div>
       ))}
@@ -190,17 +222,24 @@ const App = () => {
   )
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8 flex flex-col items-center">
-      <header className="bg-gray-70 flex gap-5 mb-5 w-[50%]">
-        <h1 className="text-5xl text-gray-800 tracking-tight">
+    <div className="min-h-screen bg-gray-50 p-8 flex flex-col items-center text-black">
+      <header className="bg-gray-70 flex gap-5 mb-5 w-[100%] 2xl:w-[60%]">
+        <h1 className="text-5xl tracking-tight">
           Dolores
         </h1>
-        <input type="text" className="bg-white rounded-2xl shadow grow p-2 text-black text-xl" placeholder="Filter" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <input type="text" className="bg-white rounded-2xl shadow grow p-2 text-xl" placeholder="Search" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <input
+          type="checkbox"
+          checked={onlyRead}
+          onChange={(e) => setOnlyRead(!onlyRead)}
+        />
+        <button className='border border-gray-400 rounded-xl p-2' onClick={(e) => clear()}>Clear All</button>
+        <button className='border border-gray-400 rounded-xl p-2' onClick={(e) => markAllRead()}>Mark All Read</button>
       </header>
 
       {
         selectedArticle && (
-          <div className="blur" onClick={() => { setSelectedArticle(null) }}></div>
+          <div className="blur" onClick={() => { deselectArticle() }}></div>
         )
       }
 

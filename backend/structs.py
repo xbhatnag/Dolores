@@ -50,6 +50,7 @@ class PageMetadata:
     title: str
     url: str
     date: str
+    discussion_url: str
 
     @staticmethod
     def from_raw(
@@ -57,7 +58,9 @@ class PageMetadata:
         source: str,
         title: str,
         date: str,
+        discussion_url: str
     ):
+        title = html.unescape(title)
         date = parse_date(date).astimezone(timezone.utc).isoformat()
         source = source
         url = url
@@ -68,6 +71,7 @@ class PageMetadata:
             title=title,
             url=url,
             date=date,
+            discussion_url=discussion_url
         )
 
     def published_after(self, cmp_date: datetime) -> bool:
@@ -77,12 +81,8 @@ class PageMetadata:
 @dataclasses.dataclass
 class PageContent:
     _id: str
-    source: str
-    title: str
-    url: str
     text: str
     favicon_url: str
-    date: str
 
     @staticmethod
     def from_metadata(metadata: PageMetadata):
@@ -99,13 +99,9 @@ class PageContent:
             favicon_url = get_favicon_url(page)
             page_text: str = get_text_by_classname(page)
             page_content = PageContent(
-                metadata._id,
-                metadata.source,
-                metadata.title,
                 metadata.url,
                 page_text,
                 favicon_url,
-                metadata.date,
             )
             logging.info("Parse complete: %s", metadata.url)
             return page_content
@@ -123,9 +119,9 @@ class Analysis:
     search_terms: list[str]
 
     @staticmethod
-    def from_llm_analysis(llm_analysis: LlmAnalysis, page_content: PageContent):
+    def from_llm_analysis(id: str, llm_analysis: LlmAnalysis):
         return Analysis(
-            _id=page_content._id,
+            _id=id,
             takeaways=llm_analysis.takeaways,
             search_terms=list(llm_analysis.search_terms),
         )
